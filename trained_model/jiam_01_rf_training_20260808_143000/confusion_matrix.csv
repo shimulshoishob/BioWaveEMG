@@ -1,0 +1,8 @@
+actual/predicted,Left,Rest,Right,dow,fist_close,thumbs_up,up
+Left,29,3,0,0,0,2,0
+Rest,2,116,2,4,1,1,2
+Right,0,0,34,0,0,0,0
+dow,0,0,0,34,0,0,0
+fist_close,0,1,0,0,34,0,0
+thumbs_up,0,0,0,0,0,39,0
+up,0,9,0,0,0,0,25

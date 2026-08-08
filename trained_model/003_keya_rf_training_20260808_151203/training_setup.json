@@ -1,0 +1,20 @@
+{
+  "created_at_text": "2026-08-08 15:12:03",
+  "dataset_paths": [
+    "dataset/Keya_003_20260808_151106/emg_data_Keya_003_20260808_151106.csv"
+  ],
+  "output_dir": "trained_model",
+  "run_name": "003_keya_rf_training",
+  "window_ms": 200,
+  "stride_ms": 50,
+  "window_samples": 100,
+  "stride_samples": 25,
+  "n_estimators": 150,
+  "max_depth": 16,
+  "test_size": 0.2,
+  "random_seed": 42,
+  "class_weight_balanced": true,
+  "auto_load_model": true,
+  "sample_rate_hz": 500,
+  "input_channels": 11
+}

@@ -1,0 +1,512 @@
+timestamp,cursor_x,cursor_y,target_id,target_center_x,target_center_y,target_radius,click_event,movement_state
+1786115660.728702,857,450,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.729888,857,449,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.736676,857,446,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.745514,857,441,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.7513201,857,437,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.7584739,857,437,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.766516,858,432,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.773996,859,426,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.7816489,860,421,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.788796,860,421,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.8039622,860,419,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.81125,859,419,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.8186822,848,410,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115660.8262389,848,410,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115662.258204,847,379,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Move Up
+1786115662.2672682,847,379,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115662.411398,847,349,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Move Up
+1786115662.525964,847,319,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Move Up
+1786115662.54293,847,349,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115662.544041,847,319,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115662.676996,847,289,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Move Up
+1786115662.686817,847,289,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,False,Pointer Move (EMG mouse)
+1786115663.155379,847,289,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,Left Click,Left Click
+1786115663.17234,847,289,shimul-block-1-trial-1-target-1,861.0,309.0,30.0,target_selected,target_selected
+1786115664.6682172,847,319,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115664.6818979,847,319,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115664.861681,847,349,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115664.974559,847,379,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115664.9959612,847,349,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115664.99712,847,379,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115665.129246,847,409,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115665.142215,847,409,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115665.6677508,847,439,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115665.678824,847,439,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115665.8205051,847,469,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115665.934685,847,499,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115665.9537861,847,469,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115665.958335,847,499,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115666.088552,847,529,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115666.1008298,847,529,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115667.006261,847,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115667.019951,847,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115667.1625228,847,589,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115667.175547,847,589,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115667.314075,847,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115667.328079,847,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115667.498177,817,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Left
+1786115667.5090601,817,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115668.0718641,817,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115668.085813,817,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115668.227534,817,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115668.343325,817,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115668.472757,817,739,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115668.4799528,817,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115668.595501,817,769,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115668.7090602,817,799,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115668.7201312,817,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115668.837518,817,829,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115668.8478642,817,739,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115668.854362,817,799,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115668.8575182,817,829,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115669.755872,817,859,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115669.7673018,817,859,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115669.9091818,817,889,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115669.922685,817,889,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115670.6737092,817,919,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115671.004035,787,919,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Left
+1786115671.156003,757,919,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Left
+1786115671.6169112,757,949,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115671.801379,757,979,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115671.915066,757,1009,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.070215,757,1039,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.2234619,757,1069,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.342588,757,1099,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.464556,757,1129,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.581718,757,1159,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.6977558,757,1189,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.818261,757,1219,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115672.930561,757,1249,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.048288,757,1279,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.171288,757,1309,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.284044,757,1339,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.405781,757,1369,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.527049,757,1399,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.63981,757,1429,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.7617128,757,1459,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.8822982,757,1489,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115673.994962,757,1519,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115674.121985,757,1549,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115674.2347,757,1579,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115674.354232,757,1609,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115674.466932,757,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115674.6553621,787,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115674.7682428,817,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115674.91563,847,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.126139,877,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.275153,907,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.3929331,937,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.510849,967,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.631017,997,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.743653,1027,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.860703,1057,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115675.9732852,1087,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115676.093167,1117,1639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115676.417724,1117,1609,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115676.572493,1117,1579,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115676.686124,1117,1549,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115676.805074,1117,1519,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115676.923706,1117,1489,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.0409431,1117,1459,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.1597672,1117,1429,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.272512,1117,1399,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.3912508,1117,1369,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.5115771,1117,1339,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.626364,1117,1309,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.746578,1117,1279,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115677.868736,1117,1249,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115678.176558,1117,1219,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115678.3242948,1117,1189,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115678.474059,1117,1159,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115678.589053,1117,1129,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115678.7073479,1117,1099,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115678.826218,1117,1069,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115678.9399009,1117,1039,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.059617,1117,1009,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.173443,1117,979,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.289401,1117,949,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.40415,1117,919,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.520171,1117,889,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.64065,1117,859,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.755106,1117,829,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.876412,1117,799,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115679.9959402,1117,769,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115680.1115751,1117,739,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115680.2292721,1117,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115680.344805,1117,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115680.464137,1117,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115680.5270872,1117,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115681.3705752,1117,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115681.3736892,1117,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115681.5205262,1117,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115681.635911,1117,739,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115681.754687,1117,769,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115681.7555919,1117,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115681.871401,1117,799,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115681.985358,1117,829,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115681.985899,1117,739,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115682.101824,1117,859,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.215657,1117,889,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.216405,1117,769,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115682.334272,1117,919,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.4503849,1117,949,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.567105,1117,979,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.567828,1117,829,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115682.6853518,1117,1009,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.8049338,1117,1039,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.917622,1117,1069,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115682.922027,1117,889,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115683.0612211,1117,1099,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115683.1778738,1117,1129,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115683.29649,1117,1159,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115683.4151309,1117,1189,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115683.538978,1117,1219,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115683.654256,1117,1249,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115683.7710211,1117,1279,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115683.890571,1117,1309,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.007818,1117,1339,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.12657,1117,1369,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.240834,1117,1399,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.359554,1117,1429,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.472203,1117,1459,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.595176,1117,1489,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.7090318,1117,1519,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115684.8237271,1117,1549,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115685.117574,1117,1519,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115685.2649019,1117,1489,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115685.377663,1117,1459,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115685.524369,1117,1429,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115685.639626,1117,1399,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115685.757959,1117,1369,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115685.878156,1117,1339,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115685.994771,1117,1309,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115686.116378,1117,1279,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115686.2290492,1117,1249,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115688.219198,1117,1219,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115688.369545,1117,1189,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115688.486903,1117,1159,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115688.608108,1117,1129,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115688.79705,1117,1099,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115688.9099252,1117,1069,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115690.5650828,1117,1039,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115690.714897,1117,1009,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115690.827677,1117,979,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115690.981494,1117,949,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.098766,1117,919,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.219062,1117,889,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.339194,1117,859,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.451916,1117,829,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.573683,1117,799,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.688097,1117,769,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.808874,1117,739,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115691.9215639,1117,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.040409,1117,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.1659572,1117,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.280158,1117,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.4019032,1117,589,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.5280378,1117,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.640914,1117,529,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.7600179,1117,499,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.87999,1117,469,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115692.993794,1117,439,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115693.052772,1117,439,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115694.118082,1117,469,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115694.124931,1117,469,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115694.275978,1117,499,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115694.278344,1117,499,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115694.422113,1117,529,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115694.42356,1117,529,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115694.604337,1117,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115694.611168,1117,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115696.369876,1087,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Left
+1786115696.3772511,1087,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115696.817367,1057,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Left
+1786115696.822499,1057,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115698.623136,1057,589,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115698.624647,1057,589,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115698.77439,1057,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115698.889867,1057,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115699.005558,1057,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115699.0090199,1057,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115699.124667,1057,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115699.1254961,1057,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115699.128542,1057,679,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115699.1302369,1057,709,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.908312,1058,708,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.916009,1062,704,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.9234471,1071,680,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.931978,1080,607,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.938638,1084,534,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.946978,1087,503,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.953336,1093,488,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.961036,1093,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.96846,1093,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115702.9769988,1093,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.142592,1093,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.151076,1093,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.177521,1093,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.215061,1092,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.22365,1092,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.232605,1092,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.2535439,1092,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.276748,1091,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.283846,1091,486,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.298759,1090,487,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.314197,1090,487,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.33114,1090,487,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.3381371,1090,487,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115703.950782,1089,487,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115704.0863519,1089,487,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115704.11496,1089,488,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115704.145355,1089,488,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115704.1905138,1089,488,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115706.6693819,1089,518,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115706.679038,1089,518,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115706.824256,1089,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115706.938414,1089,578,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.06033,1089,608,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.064542,1089,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115707.1794739,1089,638,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.1856441,1089,578,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115707.299906,1089,668,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.301427,1089,608,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115707.420971,1089,698,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.5346189,1089,728,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.535776,1089,638,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115707.6552541,1089,758,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.772022,1089,788,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115707.7812328,1089,668,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115707.793493,1089,728,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115707.795893,1089,788,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115708.520927,1089,818,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115708.52829,1089,818,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115708.72796,1089,848,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115708.733896,1089,848,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115709.6650271,1119,848,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115709.666812,1119,848,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115709.843657,1119,818,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115709.956519,1119,788,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115709.9640589,1119,818,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115709.964972,1119,788,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115710.113617,1119,758,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115710.115537,1119,758,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115710.265127,1119,728,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115710.3803341,1119,698,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115710.500146,1119,668,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115710.5061471,1119,728,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115710.62095,1119,638,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115710.734079,1119,608,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115710.73713,1119,698,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115710.8531,1119,578,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115710.966194,1119,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Up
+1786115711.0854971,1149,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115711.0864298,1119,668,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115711.202157,1179,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115711.32264,1209,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Right
+1786115711.331821,1119,608,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115711.3354518,1149,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115711.3384051,1209,548,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115713.165568,1209,578,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115713.172023,1209,578,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115715.2165928,1209,608,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115715.221666,1209,608,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115715.364218,1209,638,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115715.482441,1209,668,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115715.602027,1209,698,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115715.602918,1209,638,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115715.7190459,1209,728,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115715.8321972,1209,758,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Move Down
+1786115715.833032,1209,668,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115715.845608,1209,698,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115715.8486779,1209,758,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.3558762,1209,758,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.364453,1206,744,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.37198,1200,705,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.382288,1186,629,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.388764,1167,500,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.394809,1158,423,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.401948,1155,347,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.409394,1143,317,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.4168,1125,280,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.424427,1087,166,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.432348,1055,93,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.4401212,1041,65,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.447037,1024,33,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.454272,1023,30,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.4619389,1022,28,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.478671,1022,28,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.48535,1023,28,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.5072808,1023,28,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.636131,1023,28,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.657182,1024,30,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.664567,1024,31,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.671912,1026,36,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.679831,1027,43,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.688153,1029,51,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.696587,1033,58,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.701924,1038,65,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.7095098,1043,70,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.716922,1045,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.724807,1055,73,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.734764,1060,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.7409449,1061,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.746989,1062,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.754636,1062,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.761842,1063,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.769265,1064,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.7772522,1065,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.786617,1067,73,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.7928388,1067,72,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.7996879,1068,72,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.80729,1068,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.829956,1068,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.948756,1068,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.956789,1068,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.96401,1067,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.971672,1067,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.979773,1066,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.989262,1064,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115718.995265,1061,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.0017369,1060,71,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.009296,1057,74,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.0168161,1055,76,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.024384,1053,80,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.0348852,1052,81,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.041077,1049,90,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.046827,1046,109,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.05439,1044,121,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.061717,1044,147,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.069213,1044,161,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.076811,1046,187,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.084378,1052,211,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.092011,1055,229,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.099794,1063,253,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.107151,1067,270,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.114652,1073,298,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.1222038,1077,315,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.1315908,1078,322,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.137923,1080,340,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.14515,1080,345,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.152427,1082,348,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.159221,1082,350,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.166733,1083,350,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.175186,1084,351,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.1831198,1085,352,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.2413921,1085,352,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.278487,1085,352,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.288576,1087,351,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.294944,1089,350,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.301874,1094,349,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.309186,1097,347,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.316677,1102,345,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.324173,1105,343,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.333529,1107,343,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.3408132,1107,343,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.368337,1107,343,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.376876,1106,343,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.384693,1101,341,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.393086,1096,341,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.402594,1078,341,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.4070091,1051,342,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.414588,1021,342,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.4223151,995,342,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.429916,956,342,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.437927,929,344,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.445507,911,350,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.451819,888,363,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.459232,877,376,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.4666061,863,393,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.475072,851,421,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.483212,840,454,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.49004,834,480,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.498128,829,497,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.5043159,821,529,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.511762,815,550,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.519205,813,560,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.527578,807,574,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.535306,803,584,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.5425012,801,593,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.5491462,801,603,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.556639,801,606,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.5641868,801,613,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.571723,801,622,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.580107,800,630,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.588358,799,639,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.59518,797,646,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.601873,797,649,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.609183,797,651,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.616653,796,651,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.624199,796,652,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.6321652,796,652,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.6392682,796,652,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.647176,795,652,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.669238,795,652,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.7061388,795,652,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.758503,795,651,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.766727,794,650,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.774664,787,634,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.782026,779,622,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.790302,766,600,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.796952,758,589,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.8042,745,575,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.811618,737,565,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.819378,729,559,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.829422,724,556,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.8358111,722,554,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.843912,719,552,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.85109,718,552,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.856949,716,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.8643022,716,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.872229,715,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.897894,714,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.916769,714,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.92542,714,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.93414,713,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.942299,713,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.9469728,709,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.954543,708,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.962065,704,551,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.969609,701,552,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.976995,696,554,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.984808,692,557,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.9924018,689,560,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115719.999207,685,563,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.0070558,679,566,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.01454,675,569,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.022124,667,576,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.030178,656,584,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.0371819,649,590,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.063798,613,611,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.066592,601,617,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.0742002,597,619,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.0817652,590,621,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.089306,587,623,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.0968041,586,624,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.104278,584,625,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.11167,584,625,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.1190898,583,625,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.127011,583,625,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.14919,583,625,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.2007198,583,625,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.209187,582,624,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.216619,580,621,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.224303,579,617,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.2319381,578,612,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.242634,577,609,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.24688,577,607,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.254378,576,602,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.261659,575,601,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.268985,575,600,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.277581,575,598,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.28423,575,598,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.293109,575,598,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.299488,575,597,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.307065,575,596,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.314523,575,596,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.32206,575,595,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.330018,575,594,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.337266,575,594,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.345845,575,594,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.3743548,575,593,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,False,Pointer Move (EMG mouse)
+1786115720.4509592,575,593,shimul-block-1-trial-2-target-5,579.0,591.0,30.0,target_selected,target_selected

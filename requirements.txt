@@ -1,0 +1,7 @@
+﻿numpy
+pyqt5
+pyqtgraph
+pyserial
+joblib
+scikit-learn
+PyWavelets

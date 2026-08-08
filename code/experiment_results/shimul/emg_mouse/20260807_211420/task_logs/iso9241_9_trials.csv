@@ -1,0 +1,3 @@
+participant_id,block_number,difficulty,trial_number,target_id,target_index,target_width,target_distance,target_center_x,target_center_y,trial_start,trial_end,movement_time_s,misses_before_success
+shimul,1,Medium,1,shimul-block-1-trial-1-target-1,1,60,400,861,309,1786115660.141293,1786115663.17228,3.0310212500044145,0
+shimul,1,Medium,2,shimul-block-1-trial-2-target-5,5,60,400,579,591,1786115663.172555,1786115720.450925,57.279018458968494,0

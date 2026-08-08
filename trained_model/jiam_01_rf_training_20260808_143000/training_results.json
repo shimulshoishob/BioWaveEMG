@@ -1,0 +1,159 @@
+{
+  "created_at_text": "2026-08-08 14:30:00",
+  "accuracy": 0.9201183431952663,
+  "train_windows": 1352,
+  "test_windows": 338,
+  "num_features": 231,
+  "classes": [
+    "Left",
+    "Rest",
+    "Right",
+    "dow",
+    "fist_close",
+    "thumbs_up",
+    "up"
+  ],
+  "class_window_counts": {
+    "Left": 171,
+    "Rest": 637,
+    "Right": 170,
+    "dow": 171,
+    "fist_close": 176,
+    "thumbs_up": 194,
+    "up": 171
+  },
+  "segment_count_by_file": {
+    "dataset/jiam001_20260808_142921/emg_data_jiam001_20260808_142921.csv": 36
+  },
+  "channel_count_by_file": {
+    "dataset/jiam001_20260808_142921/emg_data_jiam001_20260808_142921.csv": 11
+  },
+  "input_channels": 11,
+  "skipped_channel_segments": 0,
+  "confusion_matrix": [
+    [
+      29,
+      3,
+      0,
+      0,
+      0,
+      2,
+      0
+    ],
+    [
+      2,
+      116,
+      2,
+      4,
+      1,
+      1,
+      2
+    ],
+    [
+      0,
+      0,
+      34,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      34,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      0,
+      34,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      39,
+      0
+    ],
+    [
+      0,
+      9,
+      0,
+      0,
+      0,
+      0,
+      25
+    ]
+  ],
+  "classification_report_text": "              precision     recall   f1-score    support\n\n        Left     0.9355     0.8529     0.8923         34\n        Rest     0.8992     0.9062     0.9027        128\n       Right     0.9444     1.0000     0.9714         34\n         dow     0.8947     1.0000     0.9444         34\n  fist_close     0.9714     0.9714     0.9714         35\n   thumbs_up     0.9286     1.0000     0.9630         39\n          up     0.9259     0.7353     0.8197         34\n\n    accuracy                           0.9201        338\n   macro avg     0.9285     0.9237     0.9236        338\nweighted avg     0.9205     0.9201     0.9185        338",
+  "classification_report_dict": {
+    "Left": {
+      "precision": 0.9354838709677419,
+      "recall": 0.8529411764705882,
+      "f1-score": 0.8923076923076924,
+      "support": 34.0
+    },
+    "Rest": {
+      "precision": 0.8992248062015504,
+      "recall": 0.90625,
+      "f1-score": 0.9027237354085603,
+      "support": 128.0
+    },
+    "Right": {
+      "precision": 0.9444444444444444,
+      "recall": 1.0,
+      "f1-score": 0.9714285714285714,
+      "support": 34.0
+    },
+    "dow": {
+      "precision": 0.8947368421052632,
+      "recall": 1.0,
+      "f1-score": 0.9444444444444444,
+      "support": 34.0
+    },
+    "fist_close": {
+      "precision": 0.9714285714285714,
+      "recall": 0.9714285714285714,
+      "f1-score": 0.9714285714285714,
+      "support": 35.0
+    },
+    "thumbs_up": {
+      "precision": 0.9285714285714286,
+      "recall": 1.0,
+      "f1-score": 0.9629629629629629,
+      "support": 39.0
+    },
+    "up": {
+      "precision": 0.9259259259259259,
+      "recall": 0.7352941176470589,
+      "f1-score": 0.819672131147541,
+      "support": 34.0
+    },
+    "accuracy": 0.9201183431952663,
+    "macro avg": {
+      "precision": 0.9285451270921322,
+      "recall": 0.9237019807923169,
+      "f1-score": 0.9235668727326206,
+      "support": 338.0
+    },
+    "weighted avg": {
+      "precision": 0.9205182181809436,
+      "recall": 0.9201183431952663,
+      "f1-score": 0.9184946456361295,
+      "support": 338.0
+    }
+  },
+  "model_file": "rf_realtime_model.joblib",
+  "run_dir": "trained_model/jiam_01_rf_training_20260808_143000",
+  "model_path": "trained_model/jiam_01_rf_training_20260808_143000/rf_realtime_model.joblib"
+}

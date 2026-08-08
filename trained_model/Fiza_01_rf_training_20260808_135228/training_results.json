@@ -1,0 +1,136 @@
+{
+  "created_at_text": "2026-08-08 13:52:28",
+  "accuracy": 0.7170393215111797,
+  "train_windows": 5393,
+  "test_windows": 1297,
+  "num_features": 231,
+  "classes": [
+    "Down",
+    "Left",
+    "Rest",
+    "Right",
+    "Up",
+    "fist_close"
+  ],
+  "class_window_counts": {
+    "Down": 577,
+    "Left": 568,
+    "Rest": 3843,
+    "Right": 567,
+    "Up": 568,
+    "fist_close": 567
+  },
+  "segment_count_by_file": {
+    "dataset/Fiza_01_20260808_135103/emg_data_Fiza_01_20260808_135103.csv": 100
+  },
+  "channel_count_by_file": {
+    "dataset/Fiza_01_20260808_135103/emg_data_Fiza_01_20260808_135103.csv": 11
+  },
+  "input_channels": 11,
+  "skipped_channel_segments": 0,
+  "confusion_matrix": [
+    [
+      46,
+      0,
+      10,
+      0,
+      0,
+      1
+    ],
+    [
+      145,
+      78,
+      65,
+      3,
+      4,
+      47
+    ],
+    [
+      18,
+      2,
+      556,
+      30,
+      7,
+      1
+    ],
+    [
+      0,
+      2,
+      6,
+      103,
+      0,
+      2
+    ],
+    [
+      1,
+      0,
+      11,
+      0,
+      41,
+      4
+    ],
+    [
+      1,
+      0,
+      7,
+      0,
+      0,
+      106
+    ]
+  ],
+  "classification_report_text": "              precision     recall   f1-score    support\n\n        Down     0.2180     0.8070     0.3433         57\n        Left     0.9512     0.2281     0.3679        342\n        Rest     0.8489     0.9055     0.8763        614\n       Right     0.7574     0.9115     0.8273        113\n          Up     0.7885     0.7193     0.7523         57\n  fist_close     0.6584     0.9298     0.7709        114\n\n    accuracy                           0.7170       1297\n   macro avg     0.7037     0.7502     0.6563       1297\nweighted avg     0.8208     0.7170     0.6998       1297",
+  "classification_report_dict": {
+    "Down": {
+      "precision": 0.21800947867298578,
+      "recall": 0.8070175438596491,
+      "f1-score": 0.34328358208955223,
+      "support": 57.0
+    },
+    "Left": {
+      "precision": 0.9512195121951219,
+      "recall": 0.22807017543859648,
+      "f1-score": 0.36792452830188677,
+      "support": 342.0
+    },
+    "Rest": {
+      "precision": 0.8488549618320611,
+      "recall": 0.9055374592833876,
+      "f1-score": 0.876280535855004,
+      "support": 614.0
+    },
+    "Right": {
+      "precision": 0.7573529411764706,
+      "recall": 0.911504424778761,
+      "f1-score": 0.8273092369477911,
+      "support": 113.0
+    },
+    "Up": {
+      "precision": 0.7884615384615384,
+      "recall": 0.7192982456140351,
+      "f1-score": 0.7522935779816514,
+      "support": 57.0
+    },
+    "fist_close": {
+      "precision": 0.6583850931677019,
+      "recall": 0.9298245614035088,
+      "f1-score": 0.7709090909090909,
+      "support": 114.0
+    },
+    "accuracy": 0.7170393215111797,
+    "macro avg": {
+      "precision": 0.7037139209176466,
+      "recall": 0.7502087350629897,
+      "f1-score": 0.6563334253474961,
+      "support": 1297.0
+    },
+    "weighted avg": {
+      "precision": 0.8207553204983381,
+      "recall": 0.7170393215111797,
+      "f1-score": 0.6998333970370186,
+      "support": 1297.0
+    }
+  },
+  "model_file": "rf_realtime_model.joblib",
+  "run_dir": "trained_model/Fiza_01_rf_training_20260808_135228",
+  "model_path": "trained_model/Fiza_01_rf_training_20260808_135228/rf_realtime_model.joblib"
+}
