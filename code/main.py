@@ -236,6 +236,7 @@ DEFAULT_TASK_LABELS = "Left,Right,fist_close"
 DEFAULT_TASK_PREP_S = 2.0
 DEFAULT_TASK_HOLD_S = 3.0
 DEFAULT_TASK_REST_S = 2.0
+DEFAULT_TASK_SETTLE_S = 0.3   # Un-recorded gap after each hold, before Rest capture starts.
 DEFAULT_TASK_REPEATS = 3
 DEFAULT_RECORD_CSV = "realtime_collected_emg.csv"
 DEFAULT_RF_MODEL_ARTIFACT = "rf_realtime_model.joblib"
@@ -1692,7 +1693,9 @@ class TaskProtocolWidget(QWidget):
         self.prep_ms = int(DEFAULT_TASK_PREP_S * 1000)
         self.hold_ms = int(DEFAULT_TASK_HOLD_S * 1000)
         self.rest_ms = int(DEFAULT_TASK_REST_S * 1000)
+        self.settle_ms = int(DEFAULT_TASK_SETTLE_S * 1000)
         self.record_rest = True
+        self.randomize_order = True
 
         self.steps = []
         self.step_idx = -1
@@ -1757,13 +1760,16 @@ class TaskProtocolWidget(QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-    def configure(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True):
+    def configure(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True,
+                  settle_s=DEFAULT_TASK_SETTLE_S, randomize_order=True):
         self.labels = [str(x).strip() for x in (labels or []) if str(x).strip()]
         self.repeats = max(1, int(repeats))
         self.prep_ms = int(max(0.2, prep_s) * 1000)
         self.hold_ms = int(max(0.2, hold_s) * 1000)
         self.rest_ms = int(max(0.2, rest_s) * 1000)
+        self.settle_ms = int(max(0.0, settle_s) * 1000)
         self.record_rest = bool(record_rest)
+        self.randomize_order = bool(randomize_order)
         self.steps = self.build_steps()
         self.step_idx = -1
         self.remaining_ms = 0
@@ -1788,7 +1794,13 @@ class TaskProtocolWidget(QWidget):
     def build_steps(self):
         steps = []
         for trial in range(1, self.repeats + 1):
-            for label in self.labels:
+            # Randomizing per repeat stops fatigue from always degrading the
+            # same class - a fixed order means whichever gesture lands last
+            # in the cycle is systematically the most fatigued every time.
+            trial_labels = list(self.labels)
+            if self.randomize_order:
+                random.shuffle(trial_labels)
+            for label in trial_labels:
                 steps.append(
                     {
                         "trial_id": trial,
@@ -1809,6 +1821,20 @@ class TaskProtocolWidget(QWidget):
                         "instruction": "Perform and hold the target activity.",
                     }
                 )
+                if self.settle_ms > 0:
+                    # Not recorded: EMG doesn't drop to baseline the instant a
+                    # contraction ends, so without this gap the start of every
+                    # "Rest" window is really relaxation decay, not true rest.
+                    steps.append(
+                        {
+                            "trial_id": trial,
+                            "phase": "Settle",
+                            "label": "Rest",
+                            "duration_ms": self.settle_ms,
+                            "record": False,
+                            "instruction": "Relax. (Not recorded - settling before Rest capture.)",
+                        }
+                    )
                 steps.append(
                     {
                         "trial_id": trial,
@@ -1836,7 +1862,7 @@ class TaskProtocolWidget(QWidget):
     @staticmethod
     def _state_for_phase(phase_name):
         p = str(phase_name or "").strip().lower()
-        if p == "rest":
+        if p in ("rest", "settle"):
             return "rest"
         if p == "prepare":
             return "prepare"
@@ -1868,6 +1894,8 @@ class TaskProtocolWidget(QWidget):
             phase_display = f"Prepare for {st['label']}"
         elif phase_name == "rest":
             phase_display = "Rest"
+        elif phase_name == "settle":
+            phase_display = "Settling..."
         else:
             phase_display = str(st["phase"])
         self.lbl_phase.setText(phase_display)
@@ -2904,6 +2932,27 @@ class DataCollectionDialog(QDialog):
         row_timing.addStretch()
         config_layout.addLayout(row_timing)
 
+        row_timing2 = QHBoxLayout()
+        row_timing2.addWidget(QLabel("Settle(s):"))
+        self.spin_task_settle = QDoubleSpinBox()
+        self.spin_task_settle.setRange(0.0, 5.0)
+        self.spin_task_settle.setSingleStep(0.1)
+        self.spin_task_settle.setValue(float(settings.get("settle_s", DEFAULT_TASK_SETTLE_S)))
+        self.spin_task_settle.setToolTip(
+            "Un-recorded gap after each hold, before Rest capture starts. Without this, the "
+            "start of every Rest window is muscle-relaxation decay, not true baseline."
+        )
+        row_timing2.addWidget(self.spin_task_settle)
+        self.check_randomize_order = QCheckBox("Randomize Gesture Order")
+        self.check_randomize_order.setChecked(bool(settings.get("randomize_order", True)))
+        self.check_randomize_order.setToolTip(
+            "Shuffle gesture order independently each repeat, so fatigue doesn't always "
+            "degrade whichever gesture is fixed last in the cycle."
+        )
+        row_timing2.addWidget(self.check_randomize_order)
+        row_timing2.addStretch()
+        config_layout.addLayout(row_timing2)
+
         row_csv = QHBoxLayout()
         row_csv.addWidget(QLabel("CSV Save Folder:"))
         self.input_record_dir = QLineEdit(str(settings.get("csv_dir", DATASET_DIR)))
@@ -2958,6 +3007,8 @@ class DataCollectionDialog(QDialog):
         self.spin_task_hold.valueChanged.connect(self._emit_settings_changed)
         self.spin_task_rest.valueChanged.connect(self._emit_settings_changed)
         self.check_record_rest.stateChanged.connect(self._emit_settings_changed)
+        self.spin_task_settle.valueChanged.connect(self._emit_settings_changed)
+        self.check_randomize_order.stateChanged.connect(self._emit_settings_changed)
         self.input_record_dir.textChanged.connect(self._emit_settings_changed)
 
         self._refresh_class_labels_display()
@@ -2994,6 +3045,8 @@ class DataCollectionDialog(QDialog):
             "hold_s": float(self.spin_task_hold.value()),
             "rest_s": float(self.spin_task_rest.value()),
             "record_rest": bool(self.check_record_rest.isChecked()),
+            "settle_s": float(self.spin_task_settle.value()),
+            "randomize_order": bool(self.check_randomize_order.isChecked()),
             "csv_dir": self.input_record_dir.text().strip(),
         }
 
@@ -3082,15 +3135,19 @@ class DataCollectionDialog(QDialog):
             hold_s=settings["hold_s"],
             rest_s=settings["rest_s"],
             record_rest=settings["record_rest"],
+            settle_s=settings["settle_s"],
+            randomize_order=settings["randomize_order"],
         )
         self.session_prepared = True
         self._set_protocol_dimmed(False)
         self._update_access_state()
 
-    def start_task_protocol(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True):
+    def start_task_protocol(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True,
+                             settle_s=DEFAULT_TASK_SETTLE_S, randomize_order=True):
         if self.protocol_running or (not self.session_prepared):
             return False
-        self.task_protocol.configure(labels, repeats, prep_s, hold_s, rest_s, record_rest)
+        self.task_protocol.configure(labels, repeats, prep_s, hold_s, rest_s, record_rest,
+                                      settle_s=settle_s, randomize_order=randomize_order)
         started = self.task_protocol.start_protocol()
         if not started:
             return False
@@ -4698,6 +4755,8 @@ class EMGVisualizer(QMainWindow):
         self.task_hold_s = float(DEFAULT_TASK_HOLD_S)
         self.task_rest_s = float(DEFAULT_TASK_REST_S)
         self.task_record_rest = True
+        self.task_settle_s = float(DEFAULT_TASK_SETTLE_S)
+        self.task_randomize_order = True
         self.task_session_active = False
         self.timed_record_enabled = False
         self.timed_record_label = ""
@@ -6460,6 +6519,8 @@ class EMGVisualizer(QMainWindow):
             "hold_s": float(self.task_hold_s),
             "rest_s": float(self.task_rest_s),
             "record_rest": bool(self.task_record_rest),
+            "settle_s": float(self.task_settle_s),
+            "randomize_order": bool(self.task_randomize_order),
             "csv_dir": self.record_save_dir,
         }
 
@@ -6481,6 +6542,8 @@ class EMGVisualizer(QMainWindow):
         self.task_hold_s = float(max(0.2, settings.get("hold_s", self.task_hold_s)))
         self.task_rest_s = float(max(0.2, settings.get("rest_s", self.task_rest_s)))
         self.task_record_rest = bool(settings.get("record_rest", self.task_record_rest))
+        self.task_settle_s = float(max(0.0, settings.get("settle_s", self.task_settle_s)))
+        self.task_randomize_order = bool(settings.get("randomize_order", self.task_randomize_order))
         csv_dir = str(settings.get("csv_dir", self.record_save_dir)).strip()
         if csv_dir:
             self.record_save_dir = csv_dir
@@ -6659,6 +6722,8 @@ class EMGVisualizer(QMainWindow):
             f"hold_s={float(self.task_hold_s)}",
             f"rest_s={float(self.task_rest_s)}",
             f"record_rest={bool(self.task_record_rest)}",
+            f"settle_s={float(self.task_settle_s)}",
+            f"randomize_order={bool(self.task_randomize_order)}",
             f"channel_count={int(self.num_channels)}",
             f"connection_medium={self.connection_medium}",
             f"sample_rate_hz={int(SAMPLE_RATE)}",
@@ -6829,6 +6894,8 @@ class EMGVisualizer(QMainWindow):
             hold_s=self.task_hold_s,
             rest_s=self.task_rest_s,
             record_rest=self.task_record_rest,
+            settle_s=self.task_settle_s,
+            randomize_order=self.task_randomize_order,
         )
         if not started:
             QMessageBox.warning(self, "Task Timer", "Unable to start task session.")
