@@ -1,16 +1,22 @@
 """
 BioWave - Standalone Adaptive Mouse Controller
 ================================================
-A fully self-sufficient companion to the BioWave EMG app. This file does NOT
-import or require main.py, mouse2.py, or rf_features.py - it has its own wired (USB/serial) and wireless
-(Wi-Fi) connectivity, its own REST/FLEX calibration workflow, and its own
-real-time RF inference pipeline. Point it at a pretrained `.joblib` model
-(trained in the main BioWave app) and it goes straight from "connect" to
+A fully self-sufficient companion to the BioWave EMG data-collection app
+(main.py). It does NOT import or require main.py - it has its own wired
+(USB/serial) and wireless (Wi-Fi) connectivity, its own REST/FLEX calibration
+workflow, and its own real-time RF inference pipeline built on top of the
+shared, unit-tested core modules (rf_features.py for feature extraction,
+emg_v4_core.py for calibration/signal-quality/decision logic, and
+realtime_pipeline.py for the sample ring buffer). Point it at a pretrained
+`.joblib` model (trained in main.py) and it goes straight from "connect" to
 "controlling the mouse" - no graphing, data collection, or training UI.
 
+This is the single mouse-controller entry point; it replaces the former
+Mouse_wireless_v2.py and Mouse_wireless_standalone_v3.py forks (see git
+history / code/LAB_SUITE_CHANGES.md for that evolution).
+
 Requires: PyQt5, numpy, joblib, pyserial, and pyautogui for actually moving
-the cursor. The Random-Forest feature extractor is embedded below and must
-match the extractor used to train the loaded model.
+the cursor.
 """
 
 import sys
@@ -42,13 +48,11 @@ from PyQt5.QtGui import QFont
 
 # Cross-platform theme (fonts/colors adapt automatically on Windows/macOS/Linux;
 # apply_dark_title_bar() is a no-op on non-Windows platforms).
-from app_theme import app_stylesheet, apply_dark_title_bar, THEME_COLORS
+from app_theme import app_stylesheet, apply_dark_title_bar, configure_high_dpi, THEME_COLORS
 
-# Public compatibility re-export: existing callers may still import this name
-# from Mouse_wireless_v2 while the implementation lives in biowave_lab_suite
-# (which merges performance_logger.py, performance_analysis.py,
+# biowave_lab_suite merges performance_logger.py, performance_analysis.py,
 # publication_figures.py, experiment_manager.py, data_tools_ui.py,
-# controller_adapters.py, async_csv.py, and iso_9241_9_task.py into one tool).
+# controller_adapters.py, async_csv.py, and iso_9241_9_task.py into one tool.
 from biowave_lab_suite import PerformanceLogger, PerformanceTarget, AnalysisSuiteWindow
 from emg_v4_core import (
     FEATURE_EXTRACTOR_VERSION, LEGACY_PREPROCESSING_VERSION, PREPROCESSING_VERSION,
@@ -57,140 +61,13 @@ from emg_v4_core import (
     validate_model_artifact,
 )
 from realtime_pipeline import SampleRingBuffer, StageProfiler
-from rf_features import FEATURE_EXTRACTOR_VERSION as CANONICAL_FEATURE_EXTRACTOR_VERSION
-from rf_features import extract_window_features as canonical_extract_window_features
+# The single canonical feature extractor, shared with the trainer in main.py.
+# Controller and trainer therefore cannot drift feature ordering.
+from rf_features import extract_window_features
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 LOG = logging.getLogger("biowave.mouse")
 
-# ========================== EMBEDDED RF FEATURES ===========================
-# These are intentionally the same features used by BioWave's rf_features.py.
-# Keep this block synchronized with the model-training feature definition.
-
-RF_FFT_MIN_HZ = 20.0
-RF_FFT_MAX_HZ = 220.0
-RF_BANDS = [(20.0, 60.0), (60.0, 120.0), (120.0, 220.0)]
-
-
-def _ensure_window_shape(window):
-    arr = np.asarray(window, dtype=np.float32)
-    if arr.ndim != 2:
-        raise ValueError("window must be 2D")
-    if arr.shape[0] < arr.shape[1]:
-        arr = arr.T
-    if arr.shape[1] <= 0:
-        raise ValueError("window must have at least 1 channel")
-    return arr
-
-
-def _spectral_1d(x, sample_rate):
-    x = np.asarray(x, dtype=np.float32)
-    n = x.shape[0]
-    if n < 8:
-        return {
-            "mean_hz": 0.0,
-            "median_hz": 0.0,
-            "peak_hz": 0.0,
-            "spec_entropy": 0.0,
-            "band_power_pct": [0.0, 0.0, 0.0],
-        }
-
-    centered = x - np.mean(x)
-    spectrum = np.abs(np.fft.rfft(centered * np.hanning(n).astype(np.float32))) ** 2
-    freqs = np.fft.rfftfreq(n, d=1.0 / float(sample_rate))
-    mask = (freqs >= RF_FFT_MIN_HZ) & (freqs <= RF_FFT_MAX_HZ)
-    if not np.any(mask):
-        return {
-            "mean_hz": 0.0,
-            "median_hz": 0.0,
-            "peak_hz": 0.0,
-            "spec_entropy": 0.0,
-            "band_power_pct": [0.0, 0.0, 0.0],
-        }
-
-    power = spectrum[mask]
-    frequencies = freqs[mask]
-    total = float(np.sum(power) + 1e-9)
-    probabilities = power / total
-    band_power = []
-    for low_hz, high_hz in RF_BANDS:
-        in_band = (frequencies >= low_hz) & (frequencies < high_hz)
-        band_power.append(float(np.sum(power[in_band]) / total * 100.0) if np.any(in_band) else 0.0)
-    return {
-        "mean_hz": float(np.sum(power * frequencies) / total),
-        "median_hz": float(frequencies[int(np.argmax(np.cumsum(power) >= 0.5 * total))]),
-        "peak_hz": float(frequencies[int(np.argmax(power))]),
-        "spec_entropy": float(-np.sum(probabilities * np.log2(probabilities + 1e-12)) / np.log2(len(probabilities) + 1e-9)),
-        "band_power_pct": band_power,
-    }
-
-
-def extract_window_features(window, sample_rate=500):
-    """Return the RF feature vector for one (samples, channels) EMG window."""
-    arr = _ensure_window_shape(window)
-    n_samples, n_channels = arr.shape
-    centered = arr - np.mean(arr, axis=0, keepdims=True)
-    features = []
-    rms_values = []
-
-    for channel in range(n_channels):
-        signal = centered[:, channel]
-        abs_signal = np.abs(signal)
-        delta = np.diff(signal) if n_samples > 1 else np.array([], dtype=np.float32)
-        mav = float(np.mean(abs_signal))
-        rms = float(np.sqrt(np.mean(np.square(signal))))
-        rms_values.append(rms)
-        if n_samples > 1:
-            zero_crossings = int(np.sum(
-                ((signal[:-1] * signal[1:]) < 0)
-                & (np.abs(signal[:-1] - signal[1:]) >= 10.0)
-            ))
-            willison = int(np.sum(np.abs(signal[1:] - signal[:-1]) >= 12.0))
-        else:
-            zero_crossings = 0
-            willison = 0
-        if n_samples > 2:
-            slope_a = signal[1:-1] - signal[:-2]
-            slope_b = signal[1:-1] - signal[2:]
-            slope_changes = int(np.sum(
-                ((slope_a * slope_b) > 0)
-                & ((np.abs(slope_a) + np.abs(slope_b)) >= 8.0)
-            ))
-        else:
-            slope_changes = 0
-        spectral = _spectral_1d(signal, sample_rate)
-        features.extend([
-            mav, rms, float(np.sum(abs_signal)), float(np.var(signal)),
-            float(np.sum(np.abs(delta))) if delta.size else 0.0,
-            float(zero_crossings), float(slope_changes), float(willison),
-            spectral["mean_hz"], spectral["median_hz"], spectral["peak_hz"],
-            spectral["spec_entropy"], *spectral["band_power_pct"],
-        ])
-
-    rms_values = np.asarray(rms_values, dtype=np.float32)
-    features.extend((rms_values / (float(np.mean(rms_values)) + 1e-9)).tolist())
-    std = np.std(centered, axis=0)
-    valid = np.isfinite(std) & (std > 1e-8)
-    if np.any(valid):
-        with np.errstate(invalid="ignore", divide="ignore"):
-            correlation = np.corrcoef(centered.T)
-    else:
-        correlation = np.eye(n_channels, dtype=np.float32)
-    correlation = np.nan_to_num(correlation, nan=0.0, posinf=0.0, neginf=0.0)
-    if not np.all(valid):
-        correlation[~valid, :] = 0.0
-        correlation[:, ~valid] = 0.0
-        np.fill_diagonal(correlation, 1.0)
-    for first in range(n_channels):
-        for second in range(first + 1, n_channels):
-            features.append(float(correlation[first, second]))
-    return np.asarray(features, dtype=np.float32)
-
-
-# The embedded V2/V3 implementation remains below only as source-history
-# reference. All deployed inference now calls the single canonical function in
-# rf_features.py, so controller and trainer cannot drift feature ordering.
-extract_window_features = canonical_extract_window_features
 HAS_RF_FEATURES = True
 
 # Mouse control library.
@@ -1084,6 +961,34 @@ class MouseControllerApp(QMainWindow):
         self.spin_conf.setValue(GESTURE_MIN_CONFIDENCE_DEFAULT)
         self.spin_conf.setSuffix("%")
         set_layout.addRow("Minimum Confidence:", self.spin_conf)
+
+        self.spin_margin = QDoubleSpinBox()
+        self.spin_margin.setRange(0.0, 50.0)
+        self.spin_margin.setValue(self.decision_engine.min_margin * 100.0)
+        self.spin_margin.setSuffix(" pts")
+        self.spin_margin.setToolTip(
+            "Required gap between the top prediction and the runner-up (often Rest) "
+            "before a gesture is allowed to act. Raise this if Rest keeps triggering moves/clicks."
+        )
+        self.spin_margin.valueChanged.connect(lambda v: setattr(self.decision_engine, "min_margin", v / 100.0))
+        set_layout.addRow("Confidence Margin:", self.spin_margin)
+
+        self.spin_debounce = QSpinBox()
+        self.spin_debounce.setRange(1, 10)
+        self.spin_debounce.setValue(self.decision_engine.consecutive_required)
+        self.spin_debounce.setSuffix(" frames")
+        self.spin_debounce.setToolTip("Consecutive matching windows required before a gesture is allowed to act.")
+        self.spin_debounce.valueChanged.connect(lambda v: setattr(self.decision_engine, "consecutive_required", v))
+        set_layout.addRow("Debounce Count:", self.spin_debounce)
+
+        self.spin_click_refractory = QDoubleSpinBox()
+        self.spin_click_refractory.setRange(0.1, 5.0)
+        self.spin_click_refractory.setValue(self.decision_engine.refractory_s)
+        self.spin_click_refractory.setSuffix(" sec")
+        self.spin_click_refractory.setToolTip("Minimum time between clicks, regardless of gesture activity.")
+        self.spin_click_refractory.valueChanged.connect(lambda v: setattr(self.decision_engine, "refractory_s", v))
+        set_layout.addRow("Click Refractory:", self.spin_click_refractory)
+
         self.spin_speed = QSpinBox()
         self.spin_speed.setRange(1, 150)
         self.spin_speed.setValue(30)
@@ -1612,7 +1517,15 @@ class MouseControllerApp(QMainWindow):
                 self.sample_ring.reset()
         self.rf_valid_sample_count = 0
         self.rf_samples_since_submit = 0
-        self.decision_engine = GestureDecisionEngine(min_confidence=self.spin_conf.value() / 100.0)
+        # Rebuilt fresh so its rolling vote history can't span the calibration
+        # boundary, but every user-tuned setting (confidence/margin/debounce/
+        # click refractory) carries over instead of silently resetting to defaults.
+        self.decision_engine = GestureDecisionEngine(
+            min_confidence=self.spin_conf.value() / 100.0,
+            min_margin=self.spin_margin.value() / 100.0,
+            consecutive_required=self.spin_debounce.value(),
+            refractory_s=self.spin_click_refractory.value(),
+        )
         # Existing V3 models were trained on baseline-centered ADC values.
         # Activating V4 filtering/normalization without matching model metadata
         # would alter feature order/scale and invalidate those models.
@@ -1843,6 +1756,7 @@ class MouseControllerApp(QMainWindow):
 
 
 if __name__ == "__main__":
+    configure_high_dpi()
     app = QApplication(sys.argv)
     window = MouseControllerApp()
     window.show()

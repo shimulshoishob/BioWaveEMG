@@ -238,6 +238,72 @@ QScrollBar::left-arrow:horizontal, QScrollBar::right-arrow:horizontal {{
 """
 
 
+def configure_high_dpi():
+    """Call once, before constructing QApplication.
+
+    Without this, PyQt5 can report window/widget sizes in physical pixels on
+    a Retina/HiDPI display (every MacBook since ~2012, plus most Windows
+    laptops today) instead of logical points, which is what makes a window
+    sized for a "normal" screen come out oversized and clip its own buttons.
+    """
+    try:
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtWidgets import QApplication
+
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    except Exception:
+        pass
+
+
+def fit_window_to_screen(window, desired_width, desired_height, margin_ratio=0.92):
+    """Resize+center ``window`` to fit the available screen.
+
+    A window is only ever made smaller than requested, never larger, and it
+    stays user-resizable afterwards. This is the actual fix for "buttons
+    aren't visible on my MacBook" bugs: those happen when a window is coded
+    for a bigger screen than the one it's opened on (e.g. a 1380x920 window
+    on a 13" MacBook Air's 1280x800 logical desktop) and macOS clips it
+    instead of shrinking it.
+    """
+    try:
+        from PyQt5.QtWidgets import QApplication
+
+        screen = window.screen() if hasattr(window, "screen") else None
+        screen = screen or QApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen else None
+    except Exception:
+        avail = None
+
+    width, height = int(desired_width), int(desired_height)
+    if avail is not None:
+        width = min(width, int(avail.width() * margin_ratio))
+        height = min(height, int(avail.height() * margin_ratio))
+    window.resize(width, height)
+    if avail is not None:
+        window.move(max(avail.x(), avail.center().x() - width // 2),
+                    max(avail.y(), avail.center().y() - height // 2))
+
+
+def wrap_in_scroll_area(window, central_widget):
+    """Put ``central_widget`` inside a borderless, resizable QScrollArea and
+    make it ``window``'s central widget.
+
+    A window built this way never permanently hides a control when shown
+    smaller than its ideal size (a MacBook's logical desktop, a split
+    screen, an external-monitor scale change) - content scrolls instead of
+    clipping. Returns the QScrollArea in case a caller needs it.
+    """
+    from PyQt5.QtWidgets import QFrame, QScrollArea
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.NoFrame)
+    scroll.setWidget(central_widget)
+    window.setCentralWidget(scroll)
+    return scroll
+
+
 def apply_dark_theme(app, font_size=16):
     font = app.font()
     if os.name == "nt":

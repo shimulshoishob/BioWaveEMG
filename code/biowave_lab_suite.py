@@ -23,7 +23,7 @@ Design goals
 Run standalone:
     python biowave_lab_suite.py
 
-Or embed from Mouse_wireless_v2.py:
+Or embed from mouse_controller.py (already wired up via its "Open Lab Suite" button):
     from biowave_lab_suite import AnalysisSuiteWindow
     suite = AnalysisSuiteWindow(emg_controller=self, performance_logger_instance=self.performance_logger)
     suite.show()
