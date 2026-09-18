@@ -58,7 +58,7 @@ from emg_v4_core import (
     FEATURE_EXTRACTOR_VERSION, LEGACY_PREPROCESSING_VERSION, PREPROCESSING_VERSION,
     CalibrationProfile, GestureDecisionEngine, PreprocessingConfig, RealTimePreprocessor,
     SampleBatch, SignalQuality, WirelessStats, assess_signal_quality, compute_calibration,
-    validate_model_artifact,
+    expected_feature_count, validate_model_artifact,
 )
 from realtime_pipeline import SampleRingBuffer, StageProfiler
 # The single canonical feature extractor, shared with the trainer in main.py.
@@ -1344,7 +1344,13 @@ class MouseControllerApp(QMainWindow):
             self.rf_model_sample_rate = int(artifact.get("sample_rate", SAMPLE_RATE))
             self.rf_class_names = [str(x) for x in class_names]
             self.rf_model_path = path
-            compatibility = validate_model_artifact(artifact, SAMPLE_RATE, self.emg_channel_count)
+            # A trained model's "input_channels" is the total column count it was
+            # trained on (EMG + IMU for wireless sessions - e.g. 8 EMG + 3 IMU = 11),
+            # not the EMG-only count. Compare against num_channels (everything the
+            # current connection actually supplies), matching how the trainer and the
+            # real-time window slicing both work - not emg_channel_count, which would
+            # make every wirelessly-trained model permanently "incompatible".
+            compatibility = validate_model_artifact(artifact, SAMPLE_RATE, self.num_channels)
             self.rf_preprocessing_version = compatibility.preprocessing_version
             self.model_compatible = compatibility.compatible
             self.model_compatibility_message = "\n".join(compatibility.errors + compatibility.warnings) or "Model compatibility verified."
@@ -1405,14 +1411,16 @@ class MouseControllerApp(QMainWindow):
 
     def check_ready_state(self):
         # Recheck when a connection changes the real acquisition channel count.
+        # num_channels (not emg_channel_count) matches what the model was trained
+        # on - see the comment in browse_model().
         if self.model_loaded:
             expected = self.model_expected_feature_count
-            if expected is not None and expected != (15 * self.emg_channel_count + self.emg_channel_count + self.emg_channel_count * (self.emg_channel_count - 1) // 2):
+            if expected is not None and expected != expected_feature_count(self.num_channels):
                 self.model_compatible = False
-                self.model_compatibility_message = "Feature count does not match connected EMG channel count."
+                self.model_compatibility_message = "Feature count does not match the connected device's channel count."
             elif expected is not None:
                 self.model_compatible = True
-                self.model_compatibility_message = "Model feature count matches connected EMG channels."
+                self.model_compatibility_message = "Model feature count matches the connected device's channels."
         ready = self.model_loaded and self.is_connected and self.model_compatible
         self.btn_calibrate.setEnabled(ready and not self.calibration_active)
         control_ready = ready and self.is_calibrated

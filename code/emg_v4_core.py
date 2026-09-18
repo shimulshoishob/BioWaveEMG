@@ -245,7 +245,10 @@ def validate_model_artifact(artifact: Any, acquisition_rate: Optional[float] = N
         errors.append(f"Model sample rate ({rate} Hz) differs from acquisition ({acquisition_rate} Hz); resampling is not enabled.")
     channels = artifact.get("input_channels")
     if channels is not None and acquisition_channels is not None and int(channels) != int(acquisition_channels):
-        errors.append(f"Model expects {channels} EMG channels, device supplies {acquisition_channels}.")
+        # "input_channels" is the total column count the model was trained on
+        # (EMG plus any IMU columns logged alongside them), not an EMG-only count -
+        # callers must pass the acquisition's matching total, not its EMG-only count.
+        errors.append(f"Model expects {channels} input channel(s) (as trained), device supplies {acquisition_channels}.")
     count = getattr(model, "n_features_in_", None)
     if count is not None and channels is not None and int(count) != expected_feature_count(int(channels)):
         errors.append(f"Model has {count} features; expected {expected_feature_count(int(channels))} for declared channel order.")
