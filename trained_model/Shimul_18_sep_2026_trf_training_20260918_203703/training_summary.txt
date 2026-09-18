@@ -1,0 +1,8 @@
+Run Folder: trained_model/Shimul_18_sep_2026_trf_training_20260918_203703
+Model File: trained_model/Shimul_18_sep_2026_trf_training_20260918_203703/rf_realtime_model.joblib
+Datasets: 1 file(s)
+Accuracy: 0.4873
+Train windows: 2262 | Test windows: 589
+Window: 200 ms (100 samples) | Stride: 50 ms (25 samples)
+Input channels: 11
+Classes: Down, Left, Rest, Right, Up, fist_close
