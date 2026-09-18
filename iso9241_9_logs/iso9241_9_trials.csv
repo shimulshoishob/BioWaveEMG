@@ -1,0 +1,5 @@
+participant_id,block_number,difficulty,trial_number,target_id,target_index,target_width,target_distance,target_center_x,target_center_y,trial_start,trial_end,movement_time_s,misses_before_success
+unknown,1,Hard,1,unknown-block-1-trial-1-target-7,7,45,500,543,273,1789742708.166351,1789742709.3396559,1.1733258750027744,0
+unknown,1,Hard,2,unknown-block-1-trial-2-target-3,3,45,500,897,627,1789742709.339846,1789742710.316451,0.9766234169946983,0
+unknown,1,Hard,3,unknown-block-1-trial-3-target-7,7,45,500,543,273,1789742710.316813,1789742711.096519,0.7797203749942128,0
+unknown,1,Hard,4,unknown-block-1-trial-4-target-3,3,45,500,897,627,1789742711.096813,1789742712.252096,1.1553040829894599,0

@@ -1,4 +1,9 @@
+from functools import lru_cache
+
 import numpy as np
+
+FEATURE_EXTRACTOR_VERSION = "rf_features.v1"
+FEATURE_SCHEMA_VERSION = "emg-rf-15+rms-ratio+corr.v1"
 
 DEFAULT_NUM_CHANNELS = 4
 FFT_MIN_HZ = 20.0
@@ -107,7 +112,12 @@ def feature_names(num_channels=DEFAULT_NUM_CHANNELS):
     return names
 
 
-def extract_window_features(window, sample_rate=500):
+def extract_window_features_legacy(window, sample_rate=500):
+    """Canonical legacy RF implementation used by deployed joblib artifacts.
+
+    Keep its ordering and numerical operations stable. Optimized implementations
+    are deliberately opt-in and tested against this reference.
+    """
     arr = _ensure_window_shape(window)
     n_samples = arr.shape[0]
     n_ch = arr.shape[1]
@@ -188,6 +198,82 @@ def extract_window_features(window, sample_rate=500):
             feats.append(float(corr[a, b]))
 
     return np.asarray(feats, dtype=np.float32)
+
+
+# Public legacy-compatible entry point. Existing training scripts and joblib
+# metadata refer to this exact import path.
+extract_window_features = extract_window_features_legacy
+
+
+@lru_cache(maxsize=32)
+def _spectral_constants(n_samples, sample_rate):
+    """Immutable FFT constants reused by the optional optimized path."""
+    n = int(n_samples)
+    rate = float(sample_rate)
+    return np.hanning(n).astype(np.float32), np.fft.rfftfreq(n, d=1.0 / rate)
+
+
+def extract_window_features_optimized(window, sample_rate=500):
+    """Low-allocation equivalent of :func:`extract_window_features_legacy`.
+
+    FFTs remain NumPy operations because NumPy's platform FFT backend is both
+    mature and more reliable than attempting an incomplete Numba FFT. The
+    Hanning window and frequency bins are cached. This function is opt-in until
+    feature-equivalence tests have passed in the target runtime.
+    """
+    arr = _ensure_window_shape(window)
+    n_samples, n_ch = arr.shape
+    centered = arr - np.mean(arr, axis=0, keepdims=True)
+    hanning, freqs = _spectral_constants(n_samples, float(sample_rate))
+    out = np.empty(15 * n_ch + n_ch + n_ch * (n_ch - 1) // 2, dtype=np.float32)
+    rms_values = np.empty(n_ch, dtype=np.float32)
+    write = 0
+    for ch in range(n_ch):
+        x = centered[:, ch]
+        abs_x = np.abs(x)
+        delta = np.diff(x) if n_samples > 1 else np.empty(0, dtype=np.float32)
+        rms = float(np.sqrt(np.mean(np.square(x))))
+        rms_values[ch] = rms
+        if n_samples > 1:
+            zc = float(np.sum(((x[:-1] * x[1:]) < 0) & (np.abs(x[:-1] - x[1:]) >= 10.0)))
+            wamp = float(np.sum(np.abs(x[1:] - x[:-1]) >= 12.0))
+        else:
+            zc = wamp = 0.0
+        if n_samples > 2:
+            a, b = x[1:-1] - x[:-2], x[1:-1] - x[2:]
+            ssc = float(np.sum(((a * b) > 0) & ((np.abs(a) + np.abs(b)) >= 8.0)))
+        else:
+            ssc = 0.0
+        spectrum = np.abs(np.fft.rfft(x * hanning)) ** 2
+        mask = (freqs >= FFT_MIN_HZ) & (freqs <= FFT_MAX_HZ)
+        if np.any(mask):
+            power, f = spectrum[mask], freqs[mask]
+            total = float(np.sum(power) + 1e-9)
+            p = power / total
+            csum = np.cumsum(power)
+            spectral = (
+                float(np.sum(power * f) / total), float(f[int(np.argmax(csum >= .5 * total))]),
+                float(f[int(np.argmax(power))]),
+                float(-np.sum(p * np.log2(p + 1e-12)) / np.log2(len(p) + 1e-9)),
+                *[float(np.sum(power[(f >= lo) & (f < hi)]) / total * 100.0) if np.any((f >= lo) & (f < hi)) else 0.0 for lo, hi in BANDS],
+            )
+        else:
+            spectral = (0.0,) * 7
+        out[write:write + 15] = (float(np.mean(abs_x)), rms, float(np.sum(abs_x)), float(np.var(x)),
+                                  float(np.sum(np.abs(delta))) if delta.size else 0.0, zc, ssc, wamp, *spectral)
+        write += 15
+    out[write:write + n_ch] = rms_values / (float(np.mean(rms_values)) + 1e-9)
+    write += n_ch
+    std = np.std(centered, axis=0)
+    valid = np.isfinite(std) & (std > 1e-8)
+    corr = np.corrcoef(centered.T) if np.any(valid) else np.eye(n_ch, dtype=np.float32)
+    corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
+    if not np.all(valid):
+        corr[~valid, :] = 0.0; corr[:, ~valid] = 0.0; np.fill_diagonal(corr, 1.0)
+    for first in range(n_ch):
+        for second in range(first + 1, n_ch):
+            out[write] = corr[first, second]; write += 1
+    return out
 
 
 def build_windows_from_sequence(sequence, win_samples, stride_samples):

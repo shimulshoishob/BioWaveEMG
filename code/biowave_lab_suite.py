@@ -23,7 +23,7 @@ Design goals
 Run standalone:
     python biowave_lab_suite.py
 
-Or embed from Mouse_wireless_v2.py:
+Or embed from mouse_controller.py (already wired up via its "Open Lab Suite" button):
     from biowave_lab_suite import AnalysisSuiteWindow
     suite = AnalysisSuiteWindow(emg_controller=self, performance_logger_instance=self.performance_logger)
     suite.show()
@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import math
 import queue
 import sys
@@ -75,6 +76,7 @@ from matplotlib.figure import Figure
 # ============================================================================
 
 CsvRecord = Mapping[str, Any]
+LOG = logging.getLogger("biowave.lab")
 
 
 class AsyncCsvWriter:
@@ -84,23 +86,37 @@ class AsyncCsvWriter:
     I/O in UI and cursor-control paths. Calling ``stop`` drains queued data.
     """
 
-    def __init__(self, path: str | Path, fieldnames: Sequence[str], thread_name: str) -> None:
+    def __init__(self, path: str | Path, fieldnames: Sequence[str], thread_name: str,
+                 max_batches: int = 256) -> None:
         self.path = Path(path)
         self.fieldnames = tuple(fieldnames)
-        self._queue: queue.Queue[list[dict[str, Any]] | None] = queue.Queue()
+        self._queue: queue.Queue[list[dict[str, Any]] | None] = queue.Queue(maxsize=max_batches)
         self._stopped = threading.Event()
+        self.dropped_batches = 0
+        self.dropped_records = 0
         self._thread = threading.Thread(target=self._run, name=thread_name, daemon=True)
         self._thread.start()
 
     def submit(self, records: Iterable[CsvRecord]) -> None:
         batch = [dict(record) for record in records]
         if batch and not self._stopped.is_set():
-            self._queue.put_nowait(batch)
+            try:
+                self._queue.put_nowait(batch)
+            except queue.Full:
+                # Telemetry is best-effort: never stall mouse/GUI control for disk.
+                self.dropped_batches += 1
+                self.dropped_records += len(batch)
 
     def stop(self, timeout_s: float = 2.0) -> None:
         if not self._stopped.is_set():
             self._stopped.set()
-            self._queue.put(None)
+            # Shutdown may block briefly to preserve already accepted records;
+            # it is never called from the high-frequency control path.
+            try:
+                self._queue.put(None, timeout=timeout_s)
+            except queue.Full:
+                LOG.warning("CSV writer shutdown timed out with %d pending batches", self._queue.qsize())
+                return
             self._thread.join(timeout=timeout_s)
 
     def _run(self) -> None:
@@ -116,8 +132,8 @@ class AsyncCsvWriter:
                     if is_new:
                         writer.writeheader()
                     writer.writerows(batch)
-            except OSError as exc:
-                print(f"CSV write error ({self.path}): {exc}")
+            except OSError:
+                LOG.exception("CSV write error: %s", self.path)
 
 
 # ============================================================================

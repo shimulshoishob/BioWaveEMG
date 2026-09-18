@@ -1,0 +1,2 @@
+Rows,Channels,Nominal_Fs_Hz,Expected_dt_ms,Median_positive_dt_ms,Negative_timestamp_diffs,Duplicate_timestamps,Duplicate_rows,Unique_packets,Packet_number_gaps,Missing_packet_numbers,Start_timestamp_ms,End_timestamp_ms,Duration_seconds,Expected_samples_metadata,Actual_samples,Coverage_vs_metadata_%,Labels,Trials
+76390,8,500,2.0,2.0,9488,491,0,15278,29,5981,1998.822021484375,214599.171875,212.60034985351564,75000,76390,101.85333333333334,"Down, Left, Rest, Right, Up, fist_close",6

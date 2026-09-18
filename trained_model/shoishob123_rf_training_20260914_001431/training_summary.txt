@@ -1,0 +1,8 @@
+Run Folder: trained_model/shoishob123_rf_training_20260914_001431
+Model File: trained_model/shoishob123_rf_training_20260914_001431/rf_realtime_model.joblib
+Datasets: 1 file(s)
+Accuracy: 0.9433
+Train windows: 1125 | Test windows: 282
+Window: 200 ms (100 samples) | Stride: 50 ms (25 samples)
+Input channels: 11
+Classes: Left, Rest, Right, down, fist_close, up

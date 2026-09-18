@@ -1,0 +1,96 @@
+{
+  "created_at_text": "2026-08-18 21:07:04",
+  "accuracy": 0.9112426035502958,
+  "train_windows": 675,
+  "test_windows": 169,
+  "num_features": 231,
+  "classes": [
+    "Left",
+    "Rest",
+    "Right",
+    "fist_close"
+  ],
+  "class_window_counts": {
+    "Left": 178,
+    "Rest": 326,
+    "Right": 169,
+    "fist_close": 171
+  },
+  "segment_count_by_file": {
+    "dataset/shimul_18_aug_2026_01_20260818_210547/emg_data_shimul_18_aug_2026_01_20260818_210547.csv": 18
+  },
+  "channel_count_by_file": {
+    "dataset/shimul_18_aug_2026_01_20260818_210547/emg_data_shimul_18_aug_2026_01_20260818_210547.csv": 11
+  },
+  "input_channels": 11,
+  "skipped_channel_segments": 0,
+  "confusion_matrix": [
+    [
+      35,
+      0,
+      1,
+      0
+    ],
+    [
+      2,
+      52,
+      4,
+      7
+    ],
+    [
+      0,
+      0,
+      34,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      33
+    ]
+  ],
+  "classification_report_text": "              precision     recall   f1-score    support\n\n        Left     0.9459     0.9722     0.9589         36\n        Rest     0.9811     0.8000     0.8814         65\n       Right     0.8718     1.0000     0.9315         34\n  fist_close     0.8250     0.9706     0.8919         34\n\n    accuracy                           0.9112        169\n   macro avg     0.9060     0.9357     0.9159        169\nweighted avg     0.9202     0.9112     0.9101        169",
+  "classification_report_dict": {
+    "Left": {
+      "precision": 0.9459459459459459,
+      "recall": 0.9722222222222222,
+      "f1-score": 0.958904109589041,
+      "support": 36.0
+    },
+    "Rest": {
+      "precision": 0.9811320754716981,
+      "recall": 0.8,
+      "f1-score": 0.8813559322033898,
+      "support": 65.0
+    },
+    "Right": {
+      "precision": 0.8717948717948718,
+      "recall": 1.0,
+      "f1-score": 0.9315068493150684,
+      "support": 34.0
+    },
+    "fist_close": {
+      "precision": 0.825,
+      "recall": 0.9705882352941176,
+      "f1-score": 0.8918918918918919,
+      "support": 34.0
+    },
+    "accuracy": 0.9112426035502958,
+    "macro avg": {
+      "precision": 0.905968223303129,
+      "recall": 0.935702614379085,
+      "f1-score": 0.9159146957498479,
+      "support": 169.0
+    },
+    "weighted avg": {
+      "precision": 0.9202287846197638,
+      "recall": 0.9112426035502958,
+      "f1-score": 0.910084264730547,
+      "support": 169.0
+    }
+  },
+  "model_file": "rf_realtime_model.joblib",
+  "run_dir": "trained_model/shimul_18_aug_2026_01_20260818_210704",
+  "model_path": "trained_model/shimul_18_aug_2026_01_20260818_210704/rf_realtime_model.joblib"
+}

@@ -1,71 +1,87 @@
-import sys
-import time
-import os
 import csv
+import hashlib
+import hmac
 import json
+import os
+import random
 import socket
 import struct
 import subprocess
-import hashlib
-import hmac
+import sys
 import threading
+import time
 import traceback
-import serial
-import serial.tools.list_ports
-import numpy as np
+from collections import deque
 from dataclasses import dataclass
 from urllib.parse import quote
+
+import numpy as np
+import serial
+import serial.tools.list_ports
+
 os.environ.setdefault("PYQTGRAPH_QT_LIB", "PyQt5")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.fonts=false")
-import pyqtgraph as pg
 import joblib
+import pyqtgraph as pg
+from PyQt5.QtCore import QPointF, QRectF, Qt, QThread, QTimer, pyqtSignal
+from PyQt5.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QFontDatabase,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QRegion,
+)
 from PyQt5.QtWidgets import (
+    QAbstractItemView,
+    QAbstractSpinBox,
     QApplication,
-    QMainWindow,
-    QVBoxLayout,
-    QHBoxLayout,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
-    QWidget,
+    QFrame,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
-    QComboBox,
-    QPushButton,
-    QSpinBox,
-    QAbstractSpinBox,
-    QCheckBox,
+    QListWidget,
+    QMainWindow,
     QMessageBox,
-    QDoubleSpinBox,
-    QDialog,
+    QPlainTextEdit,
     QProgressBar,
-    QFileDialog,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpinBox,
+    QStackedWidget,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
-    QAbstractItemView,
-    QStyle,
-    QStackedWidget,
-    QTextEdit,
-    QPlainTextEdit,
-    QScrollArea,
-    QFrame,
-    QSizePolicy,
-    QGraphicsOpacityEffect,
-    QListWidget,
     QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QPainterPath, QRegion
-from PyQt5.QtGui import QFontDatabase
-from PyQt5.QtGui import QIcon
+
 from app_theme import (
     THEME_COLORS,
     apply_dark_theme,
     apply_dark_title_bar,
+    configure_high_dpi,
+    fit_window_to_screen,
+    wrap_in_scroll_area,
     themed_button_style,
     themed_label_style,
     themed_status_color,
 )
+from emg_v4_core import WirelessStats
 
 try:
     import pywt  # Optional for wavelet-energy features
@@ -86,7 +102,7 @@ except Exception:
 try:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-    from sklearn.model_selection import train_test_split
+    from sklearn.model_selection import train_test_split, GroupShuffleSplit
     HAS_SKLEARN = True
 except Exception:
     RandomForestClassifier = None
@@ -94,7 +110,31 @@ except Exception:
     classification_report = None
     confusion_matrix = None
     train_test_split = None
+    GroupShuffleSplit = None
     HAS_SKLEARN = False
+
+try:
+    from joblib import Parallel, delayed
+    HAS_JOBLIB_PARALLEL = True
+except Exception:
+    Parallel = None
+    delayed = None
+    HAS_JOBLIB_PARALLEL = False
+
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = True  # Slam mouse to a screen corner to abort.
+    HAS_PYAUTOGUI = True
+except Exception:
+    pyautogui = None
+    HAS_PYAUTOGUI = False
+
+# Gesture class -> mouse action mapping options (used by MouseControlWindow).
+MOUSE_ACTIONS = [
+    "Ignore",
+    "Move Up", "Move Down", "Move Left", "Move Right",
+    "Left Click", "Right Click", "Double Click",
+]
 
 # --- PATHS ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -172,7 +212,16 @@ APP_NAME = "BioWave - EMG"
 DEFAULT_BAUD_RATE = 921600
 WINDOW_SIZE = 1000               # Number of samples shown on each channel
 SAMPLE_RATE = 500                # Hz (matching ESP32 sketch)
-PLOT_REFRESH_MS = 20             # 50 FPS UI refresh
+PLOT_REFRESH_MS = 33             # ~30 FPS UI refresh (EMG does not need 50 FPS)
+PLOT_RANGE_REFRESH_MS = 250      # Axis autoscale is expensive; refresh it at 4 FPS.
+LIVE_ANALYSIS_REFRESH_MS = 100   # Cheap live metrics cadence (~10 Hz).
+LIVE_ANALYSIS_HEAVY_REFRESH_MS = 350  # Expensive matrices (corr/lag/coherence) cadence (~3 Hz).
+
+# --- RENDER PERFORMANCE ---
+# Antialiasing is the single biggest pyqtgraph cost; keep it off for live streaming.
+# OpenGL offloads rasterization to the GPU but is driver-flaky on some Windows setups.
+ENABLE_ANTIALIAS = False
+ENABLE_OPENGL = False
 SERIAL_BATCH_SIZE = 25           # 50 ms @ 500 Hz
 DEFAULT_ANALYSIS_MS = 200        # Analysis window for MAV/RMS
 DEFAULT_THRESHOLD = 45.0         # EMG RMS threshold before calibration auto-tunes it
@@ -187,6 +236,7 @@ DEFAULT_TASK_LABELS = "Left,Right,fist_close"
 DEFAULT_TASK_PREP_S = 2.0
 DEFAULT_TASK_HOLD_S = 3.0
 DEFAULT_TASK_REST_S = 2.0
+DEFAULT_TASK_SETTLE_S = 0.3   # Un-recorded gap after each hold, before Rest capture starts.
 DEFAULT_TASK_REPEATS = 3
 DEFAULT_RECORD_CSV = "realtime_collected_emg.csv"
 DEFAULT_RF_MODEL_ARTIFACT = "rf_realtime_model.joblib"
@@ -196,6 +246,7 @@ SERIAL_BOOT_WAIT_S = 3.5
 SERIAL_RESPONSE_TIMEOUT_S = 15.0
 WIFI_STREAM_PORT = 5000
 WIFI_CONTROL_PORT = 5001
+DEFAULT_DEVICE_ACCESS_KEY = "CHANGE_THIS_TO_A_LONG_RANDOM_KEY"
 DISCOVERY_ADDRESS = "255.255.255.255"
 DISCOVERY_TIMEOUT = 1.2
 CONTROL_TIMEOUT = 2.0
@@ -210,6 +261,23 @@ WIRELESS_FRAME_SIZE = struct.calcsize(WIRELESS_FRAME_FORMAT)
 WIRELESS_FRAMES_PER_PACKET = 5
 WIRELESS_PACKET_SIZE = WIFI_PACKET_HEADER_SIZE + (WIRELESS_FRAME_SIZE * WIRELESS_FRAMES_PER_PACKET)
 
+# --- REALTIME PREDICTION ---
+RF_MAX_PREDICTION_HZ = 12         # Cap inference cadence; gestures don't change faster.
+RF_MIN_SUBMIT_INTERVAL_S = 1.0 / RF_MAX_PREDICTION_HZ
+RF_LABEL_SMOOTH_WINDOW = 5        # Majority-vote window for the displayed label.
+RF_INFLIGHT_TIMEOUT_S = 1.0       # Self-heal if a submitted window never reports back.
+# Training defaults tuned for real-time inference: far fewer/shallower trees than before
+# (was 400 trees / unbounded depth) for ~4x faster prediction at negligible accuracy cost.
+RF_DEFAULT_N_ESTIMATORS = 150
+RF_DEFAULT_MAX_DEPTH = 16
+RF_DEFAULT_MIN_SAMPLES_LEAF = 2
+# --- GESTURE GAME ---
+GAME_LANES = 3
+GAME_LOOP_MS = 33                  # ~30 FPS render/update loop
+GAME_GESTURE_POLL_MS = 90          # How often we sample the RF prediction for the game
+GAME_MIN_CONFIDENCE_PCT = 12.0     # Low bar so gesture control feels responsive, not laggy
+GAME_ACTION_COOLDOWN_S = 0.45      # Debounce between accepted gesture actions
+
 CAL_REST_MS = 3000               # Rest capture duration
 CAL_FLEX_MS = 3000               # Flex capture duration
 CAL_DURATION_MIN_S = 3           # Per-phase calibration duration lower bound
@@ -218,11 +286,26 @@ CAL_TICK_MS = 100                # Calibration UI timer tick
 BASE_ADAPT_ALPHA = 0.001         # Slow baseline drift compensation in Python
 BASE_ADAPT_GUARD = 80.0          # Update baseline only when near rest
 
+# Cache Hanning windows / FFT bin frequencies by (length, rate); these never change per
+# window size, so recomputing them for every analysis frame is wasted work.
+_FFT_CONST_CACHE = {}
+
+
+def fft_window_and_freqs(n_samples, sample_rate):
+    key = (int(n_samples), float(sample_rate))
+    cached = _FFT_CONST_CACHE.get(key)
+    if cached is None:
+        window = np.hanning(n_samples).astype(np.float32)
+        freqs = np.fft.rfftfreq(int(n_samples), d=1.0 / float(sample_rate))
+        cached = (window, freqs)
+        _FFT_CONST_CACHE[key] = cached
+    return cached
+
 Y_MIN = -1200
 Y_MAX = 1200
 IMU_Y_MIN = -90
 IMU_Y_MAX = 90
-Y_AXIS_FIXED_WIDTH = 25          # Keep only a slim gutter when Y tick values are hidden
+Y_AXIS_FIXED_WIDTH = 25           # Keep only a slim gutter when Y tick values are hidden
 Y_AXIS_TICK_TEXT_WIDTH = 0       # No horizontal space needed for hidden Y tick values
 LIVE_Y_PADDING_RATIO = 0.10
 LIVE_Y_MIN_HALF_RANGE = 25.0
@@ -583,6 +666,7 @@ class WirelessStreamWorker(QThread):
         self._running = True
         self._sock = None
         self._fallback_packet_sequence = 0
+        self.stats = WirelessStats()
 
     def _parse_datagram(self, data):
         if len(data) == WIRELESS_PACKET_SIZE:
@@ -590,22 +674,30 @@ class WirelessStreamWorker(QThread):
                 WIFI_PACKET_HEADER_FORMAT, data[:WIFI_PACKET_HEADER_SIZE]
             )
             if magic != b"BWIM" or version != 1 or frame_size != WIRELESS_FRAME_SIZE:
+                self.stats.invalid_packets += 1
                 return None
             payload = data[WIFI_PACKET_HEADER_SIZE:]
             expected_payload = frame_count * frame_size
             if len(payload) != expected_payload:
+                self.stats.invalid_packets += 1
                 return None
 
-            rows = []
+            rows, frame_ids, emg_timestamps, imu_ids, imu_timestamps = [], [], [], [], []
             for offset in range(0, expected_payload, WIRELESS_FRAME_SIZE):
                 frame = payload[offset : offset + WIRELESS_FRAME_SIZE]
-                _frame_id, _frame_ts, _imu_id, _imu_ts, *frame_fields = struct.unpack(WIRELESS_FRAME_FORMAT, frame)
+                frame_id, frame_ts, imu_id, imu_ts, *frame_fields = struct.unpack(WIRELESS_FRAME_FORMAT, frame)
                 row = [float(v) for v in frame_fields[:WIRELESS_EMG_CHANNELS]]
                 row.extend([float(frame_fields[8]), float(frame_fields[9]), float(frame_fields[10])])
                 rows.append(row)
+                frame_ids.append(frame_id); emg_timestamps.append(frame_ts)
+                imu_ids.append(imu_id); imu_timestamps.append(imu_ts)
             batch = np.asarray(rows, dtype=np.float32)
             packet_numbers = np.full(batch.shape[0], int(packet_sequence), dtype=np.int64)
-            return {"batch": batch, "packet_numbers": packet_numbers, "source": "wireless"}
+            arrival = time.monotonic()
+            return {"batch": batch, "packet_numbers": packet_numbers, "source": "wireless",
+                    "frame_ids": np.asarray(frame_ids, dtype=np.int64), "emg_timestamps": np.asarray(emg_timestamps, dtype=np.int64),
+                    "imu_ids": np.asarray(imu_ids, dtype=np.int64), "imu_timestamps": np.asarray(imu_timestamps, dtype=np.int64),
+                    "host_received_monotonic": arrival, "packet_gap": self.stats.observe(packet_sequence, arrival)}
 
         if len(data) == (WIRELESS_FRAME_SIZE * WIRELESS_FRAMES_PER_PACKET):
             rows = []
@@ -1177,17 +1269,29 @@ class RecordedCsvSaveWorker(QThread):
                     packets = np.asarray(batch.packet_numbers, dtype=np.int64).reshape(-1)
                     n_rows = data.shape[0]
                     n_cols = int(min(WIRELESS_TOTAL_CHANNELS, data.shape[1]))
+                    trial_id = int(batch.trial_id)
+                    label = str(batch.label)
+                    pad = [""] * (WIRELESS_TOTAL_CHANNELS - n_cols)
+                    # Convert whole arrays to Python scalars once (C-level) instead of boxing
+                    # each numpy scalar per cell, then bulk-write. Same output, much faster.
+                    ts_list = ts.tolist()
+                    pk_list = packets.tolist()
+                    data_list = data[:, :n_cols].tolist()
+                    n_ts = len(ts_list)
+                    n_pk = len(pk_list)
+                    rows = []
                     for idx in range(n_rows):
                         row = [
-                            float(ts[idx]) if idx < ts.size else 0.0,
-                            int(packets[idx]) if idx < packets.size else -1,
-                            int(batch.trial_id),
+                            ts_list[idx] if idx < n_ts else 0.0,
+                            pk_list[idx] if idx < n_pk else -1,
+                            trial_id,
                         ]
-                        row.extend(float(v) for v in data[idx, :n_cols])
-                        if n_cols < WIRELESS_TOTAL_CHANNELS:
-                            row.extend([""] * (WIRELESS_TOTAL_CHANNELS - n_cols))
-                        row.append(str(batch.label))
-                        writer.writerow(row)
+                        row.extend(data_list[idx])
+                        if pad:
+                            row.extend(pad)
+                        row.append(label)
+                        rows.append(row)
+                    writer.writerows(rows)
 
             os.makedirs(os.path.dirname(self._metadata_path) or ".", exist_ok=True)
             with open(self._metadata_path, "w", encoding="utf-8") as f:
@@ -1589,7 +1693,9 @@ class TaskProtocolWidget(QWidget):
         self.prep_ms = int(DEFAULT_TASK_PREP_S * 1000)
         self.hold_ms = int(DEFAULT_TASK_HOLD_S * 1000)
         self.rest_ms = int(DEFAULT_TASK_REST_S * 1000)
+        self.settle_ms = int(DEFAULT_TASK_SETTLE_S * 1000)
         self.record_rest = True
+        self.randomize_order = True
 
         self.steps = []
         self.step_idx = -1
@@ -1654,13 +1760,16 @@ class TaskProtocolWidget(QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-    def configure(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True):
+    def configure(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True,
+                  settle_s=DEFAULT_TASK_SETTLE_S, randomize_order=True):
         self.labels = [str(x).strip() for x in (labels or []) if str(x).strip()]
         self.repeats = max(1, int(repeats))
         self.prep_ms = int(max(0.2, prep_s) * 1000)
         self.hold_ms = int(max(0.2, hold_s) * 1000)
         self.rest_ms = int(max(0.2, rest_s) * 1000)
+        self.settle_ms = int(max(0.0, settle_s) * 1000)
         self.record_rest = bool(record_rest)
+        self.randomize_order = bool(randomize_order)
         self.steps = self.build_steps()
         self.step_idx = -1
         self.remaining_ms = 0
@@ -1685,7 +1794,13 @@ class TaskProtocolWidget(QWidget):
     def build_steps(self):
         steps = []
         for trial in range(1, self.repeats + 1):
-            for label in self.labels:
+            # Randomizing per repeat stops fatigue from always degrading the
+            # same class - a fixed order means whichever gesture lands last
+            # in the cycle is systematically the most fatigued every time.
+            trial_labels = list(self.labels)
+            if self.randomize_order:
+                random.shuffle(trial_labels)
+            for label in trial_labels:
                 steps.append(
                     {
                         "trial_id": trial,
@@ -1706,6 +1821,20 @@ class TaskProtocolWidget(QWidget):
                         "instruction": "Perform and hold the target activity.",
                     }
                 )
+                if self.settle_ms > 0:
+                    # Not recorded: EMG doesn't drop to baseline the instant a
+                    # contraction ends, so without this gap the start of every
+                    # "Rest" window is really relaxation decay, not true rest.
+                    steps.append(
+                        {
+                            "trial_id": trial,
+                            "phase": "Settle",
+                            "label": "Rest",
+                            "duration_ms": self.settle_ms,
+                            "record": False,
+                            "instruction": "Relax. (Not recorded - settling before Rest capture.)",
+                        }
+                    )
                 steps.append(
                     {
                         "trial_id": trial,
@@ -1733,7 +1862,7 @@ class TaskProtocolWidget(QWidget):
     @staticmethod
     def _state_for_phase(phase_name):
         p = str(phase_name or "").strip().lower()
-        if p == "rest":
+        if p in ("rest", "settle"):
             return "rest"
         if p == "prepare":
             return "prepare"
@@ -1765,6 +1894,8 @@ class TaskProtocolWidget(QWidget):
             phase_display = f"Prepare for {st['label']}"
         elif phase_name == "rest":
             phase_display = "Rest"
+        elif phase_name == "settle":
+            phase_display = "Settling..."
         else:
             phase_display = str(st["phase"])
         self.lbl_phase.setText(phase_display)
@@ -2049,13 +2180,14 @@ class RFTrainingDialog(QDialog):
 
         self.spin_estimators = QSpinBox()
         self.spin_estimators.setRange(50, 5000)
-        self.spin_estimators.setValue(400)
+        self.spin_estimators.setValue(RF_DEFAULT_N_ESTIMATORS)
+        self.spin_estimators.setToolTip("Fewer trees = faster live prediction. 100-150 is usually enough.")
         form.addRow("RF Trees:", self.spin_estimators)
 
         self.spin_max_depth = QSpinBox()
         self.spin_max_depth.setRange(0, 200)
-        self.spin_max_depth.setValue(0)
-        self.spin_max_depth.setToolTip("0 means no max depth.")
+        self.spin_max_depth.setValue(RF_DEFAULT_MAX_DEPTH)
+        self.spin_max_depth.setToolTip("0 means no max depth. A bound like 16 keeps trees fast and reduces overfitting.")
         form.addRow("Max Depth:", self.spin_max_depth)
 
         self.spin_test_size = QDoubleSpinBox()
@@ -2800,6 +2932,27 @@ class DataCollectionDialog(QDialog):
         row_timing.addStretch()
         config_layout.addLayout(row_timing)
 
+        row_timing2 = QHBoxLayout()
+        row_timing2.addWidget(QLabel("Settle(s):"))
+        self.spin_task_settle = QDoubleSpinBox()
+        self.spin_task_settle.setRange(0.0, 5.0)
+        self.spin_task_settle.setSingleStep(0.1)
+        self.spin_task_settle.setValue(float(settings.get("settle_s", DEFAULT_TASK_SETTLE_S)))
+        self.spin_task_settle.setToolTip(
+            "Un-recorded gap after each hold, before Rest capture starts. Without this, the "
+            "start of every Rest window is muscle-relaxation decay, not true baseline."
+        )
+        row_timing2.addWidget(self.spin_task_settle)
+        self.check_randomize_order = QCheckBox("Randomize Gesture Order")
+        self.check_randomize_order.setChecked(bool(settings.get("randomize_order", True)))
+        self.check_randomize_order.setToolTip(
+            "Shuffle gesture order independently each repeat, so fatigue doesn't always "
+            "degrade whichever gesture is fixed last in the cycle."
+        )
+        row_timing2.addWidget(self.check_randomize_order)
+        row_timing2.addStretch()
+        config_layout.addLayout(row_timing2)
+
         row_csv = QHBoxLayout()
         row_csv.addWidget(QLabel("CSV Save Folder:"))
         self.input_record_dir = QLineEdit(str(settings.get("csv_dir", DATASET_DIR)))
@@ -2854,6 +3007,8 @@ class DataCollectionDialog(QDialog):
         self.spin_task_hold.valueChanged.connect(self._emit_settings_changed)
         self.spin_task_rest.valueChanged.connect(self._emit_settings_changed)
         self.check_record_rest.stateChanged.connect(self._emit_settings_changed)
+        self.spin_task_settle.valueChanged.connect(self._emit_settings_changed)
+        self.check_randomize_order.stateChanged.connect(self._emit_settings_changed)
         self.input_record_dir.textChanged.connect(self._emit_settings_changed)
 
         self._refresh_class_labels_display()
@@ -2890,6 +3045,8 @@ class DataCollectionDialog(QDialog):
             "hold_s": float(self.spin_task_hold.value()),
             "rest_s": float(self.spin_task_rest.value()),
             "record_rest": bool(self.check_record_rest.isChecked()),
+            "settle_s": float(self.spin_task_settle.value()),
+            "randomize_order": bool(self.check_randomize_order.isChecked()),
             "csv_dir": self.input_record_dir.text().strip(),
         }
 
@@ -2978,15 +3135,19 @@ class DataCollectionDialog(QDialog):
             hold_s=settings["hold_s"],
             rest_s=settings["rest_s"],
             record_rest=settings["record_rest"],
+            settle_s=settings["settle_s"],
+            randomize_order=settings["randomize_order"],
         )
         self.session_prepared = True
         self._set_protocol_dimmed(False)
         self._update_access_state()
 
-    def start_task_protocol(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True):
+    def start_task_protocol(self, labels, repeats, prep_s, hold_s, rest_s, record_rest=True,
+                             settle_s=DEFAULT_TASK_SETTLE_S, randomize_order=True):
         if self.protocol_running or (not self.session_prepared):
             return False
-        self.task_protocol.configure(labels, repeats, prep_s, hold_s, rest_s, record_rest)
+        self.task_protocol.configure(labels, repeats, prep_s, hold_s, rest_s, record_rest,
+                                      settle_s=settle_s, randomize_order=randomize_order)
         started = self.task_protocol.start_protocol()
         if not started:
             return False
@@ -3056,11 +3217,11 @@ class AnalysisWindow(QMainWindow):
         apply_app_icon(self)
         self.num_channels = num_channels
         self.setWindowTitle("Analysis Window")
-        self.resize(1220, 900)
+        fit_window_to_screen(self, 1220, 900)
         apply_dark_title_bar(self)
 
         central = QWidget()
-        self.setCentralWidget(central)
+        wrap_in_scroll_area(self, central)
         self.setStyleSheet(
             f"QMainWindow {{ background: {THEME_COLORS['bg']}; }} "
             f"QWidget {{ background: {THEME_COLORS['bg']}; color: {THEME_COLORS['text']}; }} "
@@ -3134,6 +3295,7 @@ class AnalysisWindow(QMainWindow):
         self.freq_band_offsets = np.array([-0.26, 0.0, 0.26], dtype=np.float32)
         self.freq_band_width = 0.22
         self.freq_band_items = []
+        self._freq_band_plot_nch = None
         self._refresh_band_plot_ticks()
         self.page_tfr, self.tbl_tfr, self.lbl_desc_tfr = self.make_table_tab(
             ["CH", "STFT Mean", "STFT Std", "dP20-60", "dP60-120", "dP120-220", "A3", "D3", "D2", "D1"],
@@ -3284,24 +3446,31 @@ class AnalysisWindow(QMainWindow):
         if arr.ndim != 2 or arr.shape[0] != self.num_channels:
             return
 
-        for item in self.freq_band_items:
-            try:
-                self.freq_band_plot.removeItem(item)
-            except Exception:
-                pass
-        self.freq_band_items.clear()
-
-        x_base = np.arange(1, self.num_channels + 1, dtype=np.float32)
-        for bi in range(min(arr.shape[1], len(self.freq_band_offsets))):
-            bar = pg.BarGraphItem(
-                x=x_base + self.freq_band_offsets[bi],
-                height=np.clip(arr[:, bi], 0.0, 100.0),
-                width=self.freq_band_width,
-                brush=pg.mkBrush(self.freq_band_colors[bi]),
-                pen=pg.mkPen(self.freq_band_colors[bi]),
-            )
-            self.freq_band_plot.addItem(bar)
-            self.freq_band_items.append(bar)
+        n_bands = min(arr.shape[1], len(self.freq_band_offsets))
+        # Rebuild bars only when the layout changes; otherwise update heights in place so
+        # we don't churn a new BarGraphItem set on every analysis frame.
+        if len(self.freq_band_items) != n_bands or self._freq_band_plot_nch != self.num_channels:
+            for item in self.freq_band_items:
+                try:
+                    self.freq_band_plot.removeItem(item)
+                except Exception:
+                    pass
+            self.freq_band_items.clear()
+            x_base = np.arange(1, self.num_channels + 1, dtype=np.float32)
+            for bi in range(n_bands):
+                bar = pg.BarGraphItem(
+                    x=x_base + self.freq_band_offsets[bi],
+                    height=np.clip(arr[:, bi], 0.0, 100.0),
+                    width=self.freq_band_width,
+                    brush=pg.mkBrush(self.freq_band_colors[bi]),
+                    pen=pg.mkPen(self.freq_band_colors[bi]),
+                )
+                self.freq_band_plot.addItem(bar)
+                self.freq_band_items.append(bar)
+            self._freq_band_plot_nch = self.num_channels
+        else:
+            for bi in range(n_bands):
+                self.freq_band_items[bi].setOpts(height=np.clip(arr[:, bi], 0.0, 100.0))
 
     def make_table_tab(self, columns, description_text):
         page = QWidget()
@@ -3347,17 +3516,19 @@ class AnalysisWindow(QMainWindow):
 
     @staticmethod
     def set_rows(table, rows, center_all=False):
+        # Reuse existing cell items and only touch text that changed, instead of
+        # allocating a fresh QTableWidgetItem for every cell on every (~10 Hz) refresh.
         table.setRowCount(len(rows))
         for r, row in enumerate(rows):
             for c, val in enumerate(row):
-                item = QTableWidgetItem(str(val))
-                if center_all:
+                text = str(val)
+                item = table.item(r, c)
+                if item is None:
+                    item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
-                elif c == 0:
-                    item.setTextAlignment(Qt.AlignCenter)
-                else:
-                    item.setTextAlignment(Qt.AlignCenter)
-                table.setItem(r, c, item)
+                    table.setItem(r, c, item)
+                elif item.text() != text:
+                    item.setText(text)
 
     def set_initial_table(self):
         self.set_rows(self.tbl_overview, [("Status", "Waiting")])
@@ -3548,7 +3719,7 @@ class RealtimeClassificationWindow(QMainWindow):
         apply_app_icon(self)
         self.visualizer = visualizer
         self.setWindowTitle("Real-time Classification")
-        self.resize(920, 680)
+        fit_window_to_screen(self, 920, 680)
         apply_dark_title_bar(self)
 
         central = QWidget()
@@ -3603,11 +3774,18 @@ class RealtimeClassificationWindow(QMainWindow):
 
         self._bar_item = None
         self._last_classes = []
+        self._view_text_cache = {}
+        self._model_status_style_loaded = None
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_from_visualizer)
         self.timer.start(200)
         self.refresh_from_visualizer()
+
+    def _set_text_cached(self, widget, key, text):
+        if self._view_text_cache.get(key) != text:
+            widget.setText(text)
+            self._view_text_cache[key] = text
 
     def refresh_from_visualizer(self):
         if self.visualizer is None:
@@ -3619,28 +3797,32 @@ class RealtimeClassificationWindow(QMainWindow):
         p = dict(payload or {})
         model_loaded = bool(p.get("model_loaded", False))
         status_text = str(p.get("model_status_text", "Model: Not loaded"))
-        self.lbl_model_status.setText(status_text)
-        self.lbl_model_status.setStyleSheet(
-            themed_label_style("success" if model_loaded else "muted")
-        )
+        self._set_text_cached(self.lbl_model_status, "model_status", status_text)
+        if self._model_status_style_loaded != model_loaded:
+            self.lbl_model_status.setStyleSheet(
+                themed_label_style("success" if model_loaded else "muted")
+            )
+            self._model_status_style_loaded = model_loaded
 
         meta_text = str(p.get("meta_text", "")).strip()
-        self.meta_box.setPlainText(meta_text)
+        if self._view_text_cache.get("meta") != meta_text:
+            self.meta_box.setPlainText(meta_text)
+            self._view_text_cache["meta"] = meta_text
 
         pred_label = str(p.get("pred_label", "N/A"))
         conf_pct = float(p.get("pred_conf_pct", 0.0))
         latency_ms = float(p.get("classification_latency_ms", 0.0))
         rate_hz = float(p.get("classification_rate_hz", 0.0))
-        self.lbl_pred.setText(f"Classification: {pred_label}")
-        self.lbl_conf.setText(f"Confidence: {conf_pct:.1f}%")
+        self._set_text_cached(self.lbl_pred, "pred", f"Classification: {pred_label}")
+        self._set_text_cached(self.lbl_conf, "conf", f"Confidence: {conf_pct:.1f}%")
         if model_loaded and pred_label != "N/A" and latency_ms > 0.0:
-            self.lbl_latency.setText(f"Classification Latency: {latency_ms:.2f} ms")
+            self._set_text_cached(self.lbl_latency, "latency", f"Classification Latency: {latency_ms:.2f} ms")
         else:
-            self.lbl_latency.setText("Classification Latency: N/A")
+            self._set_text_cached(self.lbl_latency, "latency", "Classification Latency: N/A")
         if model_loaded and pred_label != "N/A":
-            self.lbl_rate.setText(f"Classification Rate: {max(0.0, rate_hz):.1f}/sec")
+            self._set_text_cached(self.lbl_rate, "rate", f"Classification Rate: {max(0.0, rate_hz):.1f}/sec")
         else:
-            self.lbl_rate.setText("Classification Rate: 0.0/sec")
+            self._set_text_cached(self.lbl_rate, "rate", "Classification Rate: 0.0/sec")
 
         classes = [str(x) for x in list(p.get("classes", []))]
         scores = np.asarray(list(p.get("class_confidences_pct", [])), dtype=np.float32)
@@ -3651,23 +3833,29 @@ class RealtimeClassificationWindow(QMainWindow):
             scores = np.zeros(len(classes), dtype=np.float32)
 
         x = np.arange(1, len(classes) + 1, dtype=np.float32)
-        if self._bar_item is not None:
-            try:
-                self.bar_plot.removeItem(self._bar_item)
-            except Exception:
-                pass
-
-        self._bar_item = pg.BarGraphItem(
-            x=x,
-            height=np.clip(scores, 0.0, 100.0),
-            width=0.62,
-            brush=pg.mkBrush(THEME_COLORS["accent"]),
-            pen=pg.mkPen(THEME_COLORS["accent"]),
-        )
-        self.bar_plot.addItem(self._bar_item)
-        ticks = [(i + 1, classes[i]) for i in range(len(classes))]
-        self.bar_plot.getAxis("bottom").setTicks([ticks])
-        self.bar_plot.setXRange(0.4, len(classes) + 0.6, padding=0.0)
+        heights = np.clip(scores, 0.0, 100.0)
+        # Rebuild the bar item only when the class set changes; otherwise update heights
+        # in place so we don't churn a new BarGraphItem every refresh.
+        if self._bar_item is None or classes != self._last_classes:
+            if self._bar_item is not None:
+                try:
+                    self.bar_plot.removeItem(self._bar_item)
+                except Exception:
+                    pass
+            self._bar_item = pg.BarGraphItem(
+                x=x,
+                height=heights,
+                width=0.62,
+                brush=pg.mkBrush(THEME_COLORS["accent"]),
+                pen=pg.mkPen(THEME_COLORS["accent"]),
+            )
+            self.bar_plot.addItem(self._bar_item)
+            ticks = [(i + 1, classes[i]) for i in range(len(classes))]
+            self.bar_plot.getAxis("bottom").setTicks([ticks])
+            self.bar_plot.setXRange(0.4, len(classes) + 0.6, padding=0.0)
+            self._last_classes = list(classes)
+        else:
+            self._bar_item.setOpts(height=heights)
 
     def closeEvent(self, event):
         self.timer.stop()
@@ -3691,13 +3879,770 @@ class RoundedClipWidget(QWidget):
         self.setMask(QRegion(poly))
 
 
+class LiveAnalysisWorker(QThread):
+    """Runs heavy spectral/time-frequency/correlation analysis off the UI thread."""
+    analysis_ready = pyqtSignal(dict)
+    analysis_finished = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._lock = threading.Lock()
+        self._pending = threading.Event()
+        self._running = True
+        self._segment = None
+        self._params = {}
+        # Cache of the expensive pairwise matrices so cheap frames can carry them forward.
+        self._heavy_cache = None
+
+    def submit(self, segment, params):
+        with self._lock:
+            self._segment = segment
+            self._params = params
+        self._pending.set()
+
+    def stop(self):
+        self._running = False
+        self._pending.set()
+        self.wait()
+
+    def run(self):
+        while self._running:
+            self._pending.wait(0.5)
+            self._pending.clear()
+            if not self._running:
+                break
+            with self._lock:
+                segment = self._segment
+                params = dict(self._params)
+            if segment is None:
+                continue
+            try:
+                include_heavy = bool(params.get("include_heavy", True))
+                centered = segment - np.mean(segment, axis=1, keepdims=True)
+                time_metrics = EMGVisualizer.compute_time_domain_features(centered)
+                spectral = EMGVisualizer.compute_spectral_features(centered)
+                # Time-frequency (STFT/wavelet) and correlation/lag/coherence are the most
+                # expensive blocks; refresh them at a lower cadence and reuse the last result
+                # on the cheap frames in between. Recompute if the cache is stale or its
+                # channel count no longer matches the stream (e.g. after a reconnect).
+                n_ch_now = centered.shape[0]
+                cache_valid = (
+                    self._heavy_cache is not None
+                    and np.asarray(self._heavy_cache[1]).shape[0] == n_ch_now
+                )
+                if include_heavy or not cache_valid:
+                    timefreq = EMGVisualizer.compute_time_frequency_features(centered)
+                    corr_matrix = EMGVisualizer.compute_corr_matrix(centered)
+                    lag_ms_matrix = EMGVisualizer.compute_lag_ms_matrix(centered)
+                    coherence_matrix = EMGVisualizer.compute_coherence_matrix(centered)
+                    self._heavy_cache = (timefreq, corr_matrix, lag_ms_matrix, coherence_matrix)
+                else:
+                    timefreq, corr_matrix, lag_ms_matrix, coherence_matrix = self._heavy_cache
+                coord_summary = EMGVisualizer.compute_coordination_indices(centered, time_metrics["rms"])
+                self.analysis_ready.emit({
+                    "time_metrics": time_metrics,
+                    "spectral": spectral,
+                    "timefreq": timefreq,
+                    "corr_matrix": corr_matrix,
+                    "lag_ms_matrix": lag_ms_matrix,
+                    "coherence_matrix": coherence_matrix,
+                    "coord_summary": coord_summary,
+                    "params": params,
+                })
+            except Exception:
+                pass
+            finally:
+                self.analysis_finished.emit()
+
+# =====================================================================
+# GESTURE GAME PATCH
+# Paste these two classes into main.py, immediately BEFORE:
+#     class RoundedClipWidget(QWidget):
+#
+# They only READ from EMGVisualizer (via get_realtime_classification_payload,
+# the same method RealtimeClassificationWindow already uses) - the RF
+# inference pipeline itself is untouched.
+# =====================================================================
+
+
+class GestureGameWidget(QWidget):
+    """Lightweight 3-lane runner controlled entirely by EMG gesture predictions.
+
+    Left / Right gestures shift the player between 3 lanes, Rest returns
+    control to neutral (arming the next move), and fist_close triggers a
+    'smash' that clears obstacles in the player's lane and grants a brief
+    shield. The confidence gate for accepting a gesture is kept low so the
+    game feels responsive even with a noisy classifier.
+    """
+
+    score_changed = pyqtSignal(int)
+    lives_changed = pyqtSignal(int)
+    game_over = pyqtSignal(int)
+
+    LANE_COUNT = GAME_LANES
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(360, 480)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
+        self.running = False
+        self.paused = False
+        self.player_lane = 1
+        self.lives = 3
+        self.score = 0
+        self.high_score = 0
+        self.objects = []  # list of dicts: lane, y (0..1 down the track), kind
+        self.spawn_accum_ms = 0.0
+        self.spawn_interval_ms = 950.0
+        self.fall_speed = 0.34  # fraction of track height per second
+        self.elapsed_s = 0.0
+        self.invulnerable_until = 0.0
+        self.smash_flash_until = 0.0
+        self.flash_color = None
+        self.current_gesture_label = "N/A"
+        self.current_gesture_conf = 0.0
+
+        self._last_action_label = None
+        self._last_action_ts = 0.0
+
+        self.loop_timer = QTimer(self)
+        self.loop_timer.timeout.connect(self._tick)
+
+    # --- lifecycle -----------------------------------------------------
+    def start_game(self):
+        self.reset_state()
+        self.running = True
+        self.paused = False
+        self.loop_timer.start(GAME_LOOP_MS)
+        self.setFocus()
+        self.update()
+
+    def pause_game(self, paused):
+        self.paused = bool(paused)
+
+    def stop_game(self):
+        self.running = False
+        self.loop_timer.stop()
+        self.update()
+
+    def reset_state(self):
+        self.player_lane = 1
+        self.lives = 3
+        self.score = 0
+        self.objects = []
+        self.spawn_accum_ms = 0.0
+        self.spawn_interval_ms = 950.0
+        self.fall_speed = 0.34
+        self.elapsed_s = 0.0
+        self.invulnerable_until = 0.0
+        self.smash_flash_until = 0.0
+        self._last_action_label = None
+        self._last_action_ts = 0.0
+        self.lives_changed.emit(self.lives)
+        self.score_changed.emit(self.score)
+        self.update()
+
+    # --- gesture input ---------------------------------------------------
+    def update_gesture(self, label, confidence_pct):
+        self.current_gesture_label = str(label or "N/A")
+        self.current_gesture_conf = float(confidence_pct or 0.0)
+        if not self.running or self.paused:
+            return
+
+        norm = self.current_gesture_label.strip().lower()
+        if not norm or norm == "n/a":
+            return
+        if self.current_gesture_conf < GAME_MIN_CONFIDENCE_PCT:
+            return
+
+        now = time.perf_counter()
+        if (now - self._last_action_ts) < GAME_ACTION_COOLDOWN_S:
+            return
+        if norm == self._last_action_label:
+            return  # require the gesture to change (e.g. relax to Rest) before it retriggers
+
+        acted = False
+        if "left" in norm:
+            self._move_player(-1)
+            acted = True
+        elif "right" in norm:
+            self._move_player(1)
+            acted = True
+        elif "fist" in norm or "close" in norm:
+            self._smash()
+            acted = True
+        elif "rest" in norm:
+            acted = True  # arms the next gesture without moving
+
+        if acted:
+            self._last_action_label = norm
+            self._last_action_ts = now
+
+    def handle_key_action(self, key):
+        """Keyboard fallback so the game can be demoed without hardware."""
+        if key == Qt.Key_Left:
+            self._last_action_label = None
+            self.update_gesture("Left", 100.0)
+        elif key == Qt.Key_Right:
+            self._last_action_label = None
+            self.update_gesture("Right", 100.0)
+        elif key == Qt.Key_Space:
+            self._last_action_label = None
+            self.update_gesture("fist_close", 100.0)
+        elif key == Qt.Key_Down:
+            self._last_action_label = None  # manual "Rest" to re-arm
+
+    def keyPressEvent(self, event):
+        self.handle_key_action(event.key())
+        super().keyPressEvent(event)
+
+    # --- game mechanics --------------------------------------------------
+    def _move_player(self, delta):
+        self.player_lane = int(np.clip(self.player_lane + delta, 0, self.LANE_COUNT - 1))
+
+    def _smash(self):
+        now = time.perf_counter()
+        cleared = 0
+        remaining = []
+        for obj in self.objects:
+            if obj["lane"] == self.player_lane and obj["kind"] == "obstacle" and obj["y"] > 0.45:
+                cleared += 1
+            else:
+                remaining.append(obj)
+        self.objects = remaining
+        if cleared > 0:
+            self._add_score(cleared * 15)
+        self.invulnerable_until = now + 0.6
+        self.smash_flash_until = now + 0.25
+        self.flash_color = QColor(THEME_COLORS.get("accent", "#3B9797"))
+
+    def _add_score(self, amount):
+        if amount == 0:
+            return
+        self.score = max(0, int(self.score + amount))
+        self.score_changed.emit(self.score)
+
+    def _tick(self):
+        if not self.running or self.paused:
+            return
+        dt_s = GAME_LOOP_MS / 1000.0
+        self.elapsed_s += dt_s
+
+        # Difficulty ramps smoothly with survival time.
+        self.fall_speed = min(0.75, 0.34 + (self.elapsed_s * 0.012))
+        self.spawn_interval_ms = max(360.0, 950.0 - (self.elapsed_s * 14.0))
+
+        self.spawn_accum_ms += dt_s * 1000.0
+        if self.spawn_accum_ms >= self.spawn_interval_ms:
+            self.spawn_accum_ms = 0.0
+            self._spawn_object()
+
+        now = time.perf_counter()
+        survivors = []
+        for obj in self.objects:
+            obj["y"] += self.fall_speed * dt_s
+            if obj["y"] >= 0.90 and not obj.get("resolved", False):
+                if obj["lane"] == self.player_lane:
+                    obj["resolved"] = True
+                    if obj["kind"] == "coin":
+                        self._add_score(10)
+                        continue
+                    elif obj["kind"] == "obstacle":
+                        if now < self.invulnerable_until:
+                            continue
+                        self._lose_life()
+                        continue
+            if obj["y"] < 1.05:
+                survivors.append(obj)
+            elif obj["kind"] == "obstacle" and not obj.get("resolved", False):
+                self._add_score(2)  # reward for dodging cleanly
+        self.objects = survivors
+
+        self.update()
+
+    def _spawn_object(self):
+        lane = random.randint(0, self.LANE_COUNT - 1)
+        kind = "coin" if random.random() < 0.30 else "obstacle"
+        self.objects.append({"lane": lane, "y": -0.05, "kind": kind, "resolved": False})
+
+    def _lose_life(self):
+        self.lives -= 1
+        self.lives_changed.emit(self.lives)
+        self.invulnerable_until = time.perf_counter() + 1.0
+        if self.lives <= 0:
+            self.running = False
+            self.loop_timer.stop()
+            self.high_score = max(self.high_score, self.score)
+            self.game_over.emit(self.score)
+
+    # --- rendering ---------------------------------------------------
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        rect = self.rect()
+
+        bg = QColor(THEME_COLORS.get("bg", "#0A182C"))
+        painter.fillRect(rect, bg)
+
+        track_margin = 16
+        track_rect = QRectF(
+            track_margin, track_margin + 20,
+            rect.width() - (2 * track_margin), rect.height() - (2 * track_margin) - 44,
+        )
+        panel = QColor(THEME_COLORS.get("panel", "#132440"))
+        painter.setPen(QPen(QColor(THEME_COLORS.get("accent", "#3B9797")), 2))
+        painter.setBrush(QBrush(panel))
+        painter.drawRoundedRect(track_rect, 12, 12)
+
+        lane_w = track_rect.width() / self.LANE_COUNT
+        painter.setPen(QPen(QColor(255, 255, 255, 30), 1, Qt.DashLine))
+        for i in range(1, self.LANE_COUNT):
+            x = track_rect.left() + (lane_w * i)
+            painter.drawLine(QPointF(x, track_rect.top()), QPointF(x, track_rect.bottom()))
+
+        # Falling objects (obstacles + coins)
+        for obj in self.objects:
+            cx = track_rect.left() + (lane_w * (obj["lane"] + 0.5))
+            cy = track_rect.top() + (obj["y"] * track_rect.height())
+            if obj["kind"] == "coin":
+                painter.setPen(QPen(QColor("#FFD166"), 2))
+                painter.setBrush(QBrush(QColor("#FFB703")))
+                r = min(lane_w, track_rect.height()) * 0.09
+                painter.drawEllipse(QPointF(cx, cy), r, r)
+            else:
+                painter.setPen(QPen(QColor("#8C1128"), 2))
+                painter.setBrush(QBrush(QColor("#BF092F")))
+                s = min(lane_w, track_rect.height()) * 0.11
+                painter.drawRect(QRectF(cx - s, cy - s, s * 2, s * 2))
+
+        # Player
+        player_cx = track_rect.left() + (lane_w * (self.player_lane + 0.5))
+        player_cy = track_rect.top() + (track_rect.height() * 0.90)
+        player_r = min(lane_w, track_rect.height()) * 0.10
+        now = time.perf_counter()
+        shielded = now < self.invulnerable_until
+        player_color = QColor(THEME_COLORS.get("success", "#4CAF50")) if shielded else QColor(THEME_COLORS.get("accent", "#3B9797"))
+        painter.setPen(QPen(QColor("#FFFFFF"), 2))
+        painter.setBrush(QBrush(player_color))
+        painter.drawEllipse(QPointF(player_cx, player_cy), player_r, player_r)
+        if shielded:
+            painter.setPen(QPen(QColor(255, 255, 255, 140), 2, Qt.DashLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QPointF(player_cx, player_cy), player_r * 1.6, player_r * 1.6)
+
+        if now < self.smash_flash_until and self.flash_color is not None:
+            flash = QColor(self.flash_color)
+            flash.setAlpha(60)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(flash))
+            painter.drawRoundedRect(track_rect, 12, 12)
+
+        # HUD
+        hud_font = QFont()
+        hud_font.setPointSize(11)
+        hud_font.setBold(True)
+        painter.setFont(hud_font)
+        painter.setPen(QColor(THEME_COLORS.get("text", "#E8EEF0")))
+        painter.drawText(
+            QRectF(track_rect.left(), 2, track_rect.width() * 0.6, track_margin + 16),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            f"Score: {self.score}   Best: {self.high_score}",
+        )
+        painter.drawText(
+            QRectF(track_rect.left() + track_rect.width() * 0.4, 2, track_rect.width() * 0.6, track_margin + 16),
+            Qt.AlignRight | Qt.AlignVCenter,
+            ("Lives: " + ("* " * max(0, self.lives))).rstrip(),
+        )
+
+        gesture_font = QFont()
+        gesture_font.setPointSize(10)
+        painter.setFont(gesture_font)
+        painter.setPen(QColor(THEME_COLORS.get("muted", "#A9C2CF")))
+        painter.drawText(
+            QRectF(track_rect.left(), track_rect.bottom() + 4, track_rect.width(), track_margin + 16),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            f"Gesture: {self.current_gesture_label}  ({self.current_gesture_conf:.0f}%)",
+        )
+
+        if not self.running:
+            painter.setPen(QColor(255, 255, 255, 230))
+            title_font = QFont()
+            title_font.setPointSize(18)
+            title_font.setBold(True)
+            painter.setFont(title_font)
+            msg = "Press Start" if self.score == 0 and self.lives == 3 else f"Game Over - Score {self.score}"
+            painter.drawText(track_rect, Qt.AlignCenter, msg)
+
+
+class GestureGameWindow(QMainWindow):
+    closed = pyqtSignal()
+
+    def __init__(self, visualizer):
+        super().__init__()
+        apply_app_icon(self)
+        self.visualizer = visualizer
+        self.setWindowTitle("Gesture Game - Lane Dash")
+        fit_window_to_screen(self, 520, 700)
+        apply_dark_title_bar(self)
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setSpacing(8)
+
+        intro = QLabel(
+            "Control the runner with your gestures: Left/Right switch lanes, Rest arms the "
+            "next move, and fist_close smashes obstacles in your lane for bonus points. "
+            "Keyboard fallback: Left/Right arrows, Space = fist_close, Down = re-arm."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(intro)
+
+        self.lbl_model_status = QLabel("Model: Not loaded")
+        self.lbl_model_status.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(self.lbl_model_status)
+
+        self.game_widget = GestureGameWidget()
+        self.game_widget.score_changed.connect(self._on_score_changed)
+        self.game_widget.lives_changed.connect(self._on_lives_changed)
+        self.game_widget.game_over.connect(self._on_game_over)
+        layout.addWidget(self.game_widget, 1)
+
+        btn_row = QHBoxLayout()
+        self.btn_start = QPushButton("Start")
+        self.btn_start.setStyleSheet(themed_button_style("success"))
+        self.btn_start.clicked.connect(self.on_start_clicked)
+        btn_row.addWidget(self.btn_start)
+
+        self.btn_pause = QPushButton("Pause")
+        self.btn_pause.setStyleSheet(themed_button_style("accent"))
+        self.btn_pause.setEnabled(False)
+        self.btn_pause.clicked.connect(self.on_pause_clicked)
+        btn_row.addWidget(self.btn_pause)
+
+        self.btn_reset = QPushButton("Reset")
+        self.btn_reset.setStyleSheet(themed_button_style("muted"))
+        self.btn_reset.clicked.connect(self.on_reset_clicked)
+        btn_row.addWidget(self.btn_reset)
+        layout.addLayout(btn_row)
+
+        self.lbl_status = QLabel("Press Start, then use your gestures (or arrow keys) to play.")
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(self.lbl_status)
+
+        self.poll_timer = QTimer(self)
+        self.poll_timer.timeout.connect(self.poll_gesture)
+        self.poll_timer.start(GAME_GESTURE_POLL_MS)
+
+        self.game_widget.setFocus()
+
+    def on_start_clicked(self):
+        self.game_widget.start_game()
+        self.btn_pause.setEnabled(True)
+        self.btn_pause.setText("Pause")
+        self.lbl_status.setText("Game running - use Left/Right to move, fist_close to smash.")
+        self.game_widget.setFocus()
+
+    def on_pause_clicked(self):
+        is_paused = not self.game_widget.paused
+        self.game_widget.pause_game(is_paused)
+        self.btn_pause.setText("Resume" if is_paused else "Pause")
+        self.lbl_status.setText("Paused." if is_paused else "Game running.")
+        self.game_widget.setFocus()
+
+    def on_reset_clicked(self):
+        self.game_widget.stop_game()
+        self.game_widget.reset_state()
+        self.btn_pause.setEnabled(False)
+        self.btn_pause.setText("Pause")
+        self.lbl_status.setText("Press Start, then use your gestures (or arrow keys) to play.")
+        self.game_widget.setFocus()
+
+    def _on_score_changed(self, score):
+        pass  # score is drawn directly on the widget; hook kept for future HUD use
+
+    def _on_lives_changed(self, lives):
+        if lives <= 0:
+            self.lbl_status.setText("Out of lives! Press Reset to play again.")
+
+    def _on_game_over(self, final_score):
+        self.btn_pause.setEnabled(False)
+        self.lbl_status.setText(f"Game over - final score {final_score}. Press Reset to play again.")
+
+    def poll_gesture(self):
+        if self.visualizer is None:
+            return
+        payload = self.visualizer.get_realtime_classification_payload()
+        model_loaded = bool(payload.get("model_loaded", False))
+        self.lbl_model_status.setText(str(payload.get("model_status_text", "Model: Not loaded")))
+        self.lbl_model_status.setStyleSheet(
+            themed_label_style("success" if model_loaded else "muted")
+        )
+        label = str(payload.get("pred_label", "N/A"))
+        conf_pct = float(payload.get("pred_conf_pct", 0.0))
+        self.game_widget.update_gesture(label, conf_pct)
+
+    def closeEvent(self, event):
+        self.poll_timer.stop()
+        self.game_widget.stop_game()
+        self.closed.emit()
+        super().closeEvent(event)
+
+
+class MouseControlWindow(QMainWindow):
+    """Drive the OS mouse cursor from the app's live gesture predictions.
+
+    This mirrors GestureGameWindow's approach: it does NOT open its own
+    serial connection or load its own model. It simply polls the same
+    visualizer.get_realtime_classification_payload() feed that already
+    streams live gesture/class predictions once EMGVisualizer is connected,
+    calibrated, and has an RF model loaded. The window only adds the
+    class-to-mouse-action mapping UI and the pyautogui execution logic.
+    """
+
+    closed = pyqtSignal()
+
+    def __init__(self, visualizer):
+        super().__init__()
+        apply_app_icon(self)
+        self.visualizer = visualizer
+        self.setWindowTitle("Mouse Control")
+        fit_window_to_screen(self, 480, 620)
+        apply_dark_title_bar(self)
+
+        self.class_action_map = {}   # {class_name: action_string}
+        self.mapping_combos = []
+        self.mouse_control_active = False
+        self.last_click_time = 0.0
+        self._known_classes = []
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setSpacing(8)
+
+        intro = QLabel(
+            "Map each gesture class to a mouse action, then enable mouse control. "
+            "This uses the same live model/stream as Real-time Classification, so "
+            "connect, calibrate, and load an RF model first. Move the physical mouse "
+            "to a screen corner at any time to abort (pyautogui fail-safe)."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(intro)
+
+        self.lbl_model_status = QLabel("Model: Not loaded")
+        self.lbl_model_status.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(self.lbl_model_status)
+
+        if not HAS_PYAUTOGUI:
+            warn = QLabel("pyautogui not installed - run: pip install pyautogui")
+            warn.setStyleSheet(themed_label_style("danger") if "danger" in THEME_COLORS else "color:#BF092F;")
+            layout.addWidget(warn)
+
+        grp_map = QFrame()
+        map_outer = QVBoxLayout(grp_map)
+        map_outer.addWidget(QLabel("Gesture -> Action mapping:"))
+        self.scroll_map = QScrollArea()
+        self.scroll_map.setWidgetResizable(True)
+        self.map_content = QWidget()
+        self.map_form = QFormLayout(self.map_content)
+        self.scroll_map.setWidget(self.map_content)
+        map_outer.addWidget(self.scroll_map)
+        self.lbl_map_hint = QLabel("Waiting for classes from the loaded model...")
+        self.lbl_map_hint.setStyleSheet(themed_label_style("muted"))
+        self.map_form.addRow(self.lbl_map_hint)
+        layout.addWidget(grp_map, 1)
+
+        settings_form = QFormLayout()
+        self.spin_conf = QDoubleSpinBox()
+        self.spin_conf.setRange(10.0, 99.9)
+        self.spin_conf.setValue(65.0)
+        self.spin_conf.setSuffix("%")
+        settings_form.addRow("Minimum Confidence:", self.spin_conf)
+
+        self.spin_speed = QSpinBox()
+        self.spin_speed.setRange(1, 150)
+        self.spin_speed.setValue(30)
+        self.spin_speed.setSuffix(" px")
+        settings_form.addRow("Mouse Speed (per tick):", self.spin_speed)
+
+        self.spin_cooldown = QDoubleSpinBox()
+        self.spin_cooldown.setRange(0.1, 5.0)
+        self.spin_cooldown.setValue(1.0)
+        self.spin_cooldown.setSuffix(" sec")
+        settings_form.addRow("Click Cooldown:", self.spin_cooldown)
+        layout.addLayout(settings_form)
+
+        self.lbl_prediction = QLabel("REST")
+        self.lbl_prediction.setAlignment(Qt.AlignCenter)
+        pred_font = QFont()
+        pred_font.setPointSize(20)
+        pred_font.setBold(True)
+        self.lbl_prediction.setFont(pred_font)
+        self.lbl_prediction.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(self.lbl_prediction)
+
+        self.btn_mouse_toggle = QPushButton("ENABLE MOUSE CONTROL")
+        self.btn_mouse_toggle.setStyleSheet(themed_button_style("success"))
+        self.btn_mouse_toggle.setCheckable(True)
+        self.btn_mouse_toggle.setEnabled(HAS_PYAUTOGUI)
+        self.btn_mouse_toggle.toggled.connect(self.toggle_mouse_control)
+        layout.addWidget(self.btn_mouse_toggle)
+
+        lbl_safety = QLabel("Safety: move the physical mouse to a screen corner to abort.")
+        lbl_safety.setAlignment(Qt.AlignCenter)
+        lbl_safety.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(lbl_safety)
+
+        self.lbl_status = QLabel("Idle.")
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet(themed_label_style("muted"))
+        layout.addWidget(self.lbl_status)
+
+        self.poll_timer = QTimer(self)
+        self.poll_timer.timeout.connect(self.poll_gesture)
+        self.poll_timer.start(GAME_GESTURE_POLL_MS)
+
+    # --- mapping UI -----------------------------------------------------
+    def build_mapping_ui(self, class_names):
+        while self.map_form.count():
+            item = self.map_form.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self.mapping_combos = []
+        self.class_action_map = {}
+
+        if not class_names:
+            self.lbl_map_hint = QLabel("Waiting for classes from the loaded model...")
+            self.lbl_map_hint.setStyleSheet(themed_label_style("muted"))
+            self.map_form.addRow(self.lbl_map_hint)
+            return
+
+        for cls in class_names:
+            combo = QComboBox()
+            combo.addItems(MOUSE_ACTIONS)
+
+            clower = cls.lower()
+            if "up" in clower:
+                combo.setCurrentText("Move Up")
+            elif "down" in clower:
+                combo.setCurrentText("Move Down")
+            elif "left" in clower and "click" not in clower:
+                combo.setCurrentText("Move Left")
+            elif "right" in clower and "click" not in clower:
+                combo.setCurrentText("Move Right")
+            elif "double" in clower:
+                combo.setCurrentText("Double Click")
+            elif "right" in clower and "click" in clower:
+                combo.setCurrentText("Right Click")
+            elif "click" in clower or "fist" in clower:
+                combo.setCurrentText("Left Click")
+            else:
+                combo.setCurrentText("Ignore")
+
+            combo.currentTextChanged.connect(lambda text, c=cls: self.update_map(c, text))
+            self.update_map(cls, combo.currentText())
+
+            self.map_form.addRow(f"Gesture: {cls}", combo)
+            self.mapping_combos.append(combo)
+
+    def update_map(self, cls, action):
+        self.class_action_map[cls] = action
+
+    # --- mouse control ----------------------------------------------------
+    def toggle_mouse_control(self, checked):
+        self.mouse_control_active = bool(checked) and HAS_PYAUTOGUI
+        if checked:
+            self.btn_mouse_toggle.setText("STOP MOUSE CONTROL")
+            self.btn_mouse_toggle.setStyleSheet(themed_button_style("danger") if "danger" in THEME_COLORS else "background-color:#BF092F;color:white;font-weight:bold;padding:8px;")
+            self.lbl_status.setText("Mouse control active - live gestures now move/click the cursor.")
+        else:
+            self.btn_mouse_toggle.setText("ENABLE MOUSE CONTROL")
+            self.btn_mouse_toggle.setStyleSheet(themed_button_style("success"))
+            self.lbl_status.setText("Mouse control disabled.")
+
+    def execute_mouse_action(self, action):
+        if action == "Ignore" or not HAS_PYAUTOGUI:
+            return
+        speed = self.spin_speed.value()
+        now = time.perf_counter()
+        try:
+            if action == "Move Up":
+                pyautogui.move(0, -speed)
+            elif action == "Move Down":
+                pyautogui.move(0, speed)
+            elif action == "Move Left":
+                pyautogui.move(-speed, 0)
+            elif action == "Move Right":
+                pyautogui.move(speed, 0)
+            elif "Click" in action:
+                if now - self.last_click_time > self.spin_cooldown.value():
+                    if action == "Left Click":
+                        pyautogui.click(button="left")
+                    elif action == "Right Click":
+                        pyautogui.click(button="right")
+                    elif action == "Double Click":
+                        pyautogui.doubleClick()
+                    self.last_click_time = now
+        except Exception as e:
+            if HAS_PYAUTOGUI and hasattr(pyautogui, "FailSafeException") and isinstance(e, pyautogui.FailSafeException):
+                self.btn_mouse_toggle.setChecked(False)
+                QMessageBox.critical(self, "Safety Triggered", "Mouse hit a screen corner. Control disabled for safety.")
+            else:
+                self.lbl_status.setText(f"Mouse action error: {e}")
+
+    # --- polling the shared live prediction feed -------------------------
+    def poll_gesture(self):
+        if self.visualizer is None:
+            return
+        payload = self.visualizer.get_realtime_classification_payload()
+        model_loaded = bool(payload.get("model_loaded", False))
+        self.lbl_model_status.setText(str(payload.get("model_status_text", "Model: Not loaded")))
+        self.lbl_model_status.setStyleSheet(
+            themed_label_style("success" if model_loaded else "muted")
+        )
+
+        classes = list(payload.get("classes", []))
+        if classes != self._known_classes:
+            self._known_classes = classes
+            self.build_mapping_ui(classes)
+
+        label = str(payload.get("pred_label", "N/A"))
+        conf_pct = float(payload.get("pred_conf_pct", 0.0))
+
+        self.lbl_prediction.setText(label.upper() if label else "N/A")
+        req_conf = self.spin_conf.value()
+        if not model_loaded or label in ("N/A", "") or conf_pct < req_conf:
+            self.lbl_prediction.setStyleSheet(themed_label_style("muted"))
+            return
+        self.lbl_prediction.setStyleSheet(themed_label_style("success"))
+
+        action = self.class_action_map.get(label, "Ignore")
+        if self.mouse_control_active:
+            self.execute_mouse_action(action)
+
+    def closeEvent(self, event):
+        self.poll_timer.stop()
+        if self.btn_mouse_toggle.isChecked():
+            self.btn_mouse_toggle.setChecked(False)
+        self.closed.emit()
+        super().closeEvent(event)
+
+
 class EMGVisualizer(QMainWindow):
     def __init__(self):
         super().__init__()
         apply_app_icon(self)
 
         self.setWindowTitle(APP_NAME)
-        self.resize(1380, 920)
+        fit_window_to_screen(self, 1380, 920)
+        self.setMinimumSize(900, 600)
         apply_dark_title_bar(self)
 
         # State variables
@@ -3707,6 +4652,7 @@ class EMGVisualizer(QMainWindow):
         self.calibration_active = False
         self.data_buffer = None
         self.raw_data_buffer = None
+        self._buffer_lock = threading.RLock()
         self.baseline_offsets = np.zeros(4, dtype=np.float32)
 
         self.curves = []
@@ -3774,14 +4720,29 @@ class EMGVisualizer(QMainWindow):
         self.rf_samples_since_submit = 0
         self.rf_valid_sample_count = 0
         self.rf_last_status_reason = "Model not loaded"
+        # Cadence cap + in-flight guard so inference never falls behind the stream.
+        self.rf_last_submit_ts = 0.0
+        self.rf_inference_in_flight = False
+        self.last_transport_metadata = {}
+        # Short label history for majority-vote smoothing of the displayed prediction.
+        self.rf_label_history = deque(maxlen=RF_LABEL_SMOOTH_WINDOW)
         self.rf_worker = RFRealtimeInferenceWorker(sample_rate=SAMPLE_RATE)
         self.rf_worker.prediction_ready.connect(self.on_rf_prediction_ready)
         self.rf_worker.error_occurred.connect(self.on_rf_worker_error)
         self.rf_worker.start(QThread.HighPriority)
+        self._analysis_worker = LiveAnalysisWorker()
+        self._analysis_worker.analysis_ready.connect(self._on_analysis_ready)
+        self._analysis_worker.analysis_finished.connect(self._on_analysis_finished)
+        self._analysis_worker.start()
         self.live_analysis_enabled = False
         self.analysis_idle_labels_active = False
+        self._analysis_pending = False
+        self._last_analysis_submit_ts = 0.0
+        self._last_heavy_analysis_submit_ts = 0.0
         self.realtime_classification_window = None
 
+        self.gesture_game_window = None
+        self.mouse_control_window = None
         self.data_collection_dialog = None
         self.training_dialog = None
         self.contributor_name = ""
@@ -3794,12 +4755,15 @@ class EMGVisualizer(QMainWindow):
         self.task_hold_s = float(DEFAULT_TASK_HOLD_S)
         self.task_rest_s = float(DEFAULT_TASK_REST_S)
         self.task_record_rest = True
+        self.task_settle_s = float(DEFAULT_TASK_SETTLE_S)
+        self.task_randomize_order = True
         self.task_session_active = False
         self.timed_record_enabled = False
         self.timed_record_label = ""
         self.timed_record_trial_id = 0
         self.timed_record_phase = ""
         self.recorded_batches = []
+        self._recorded_total_samples = 0
         self.record_start_unix = 0.0
         self.record_save_dir = DATASET_DIR
         self.last_recorded_csv_path = os.path.join(DATASET_DIR, DEFAULT_RECORD_CSV)
@@ -3811,7 +4775,7 @@ class EMGVisualizer(QMainWindow):
         self.current_port_name = "socket://127.0.0.1:7000"
         self.current_device = None
         self.discovered_wireless_devices = []
-        self.wireless_access_key = ""
+        self.wireless_access_key = DEFAULT_DEVICE_ACCESS_KEY
         self.keepalive_failures = 0
         self.port_config_dialog = None
         self.wireless_config_dialog = None
@@ -3822,7 +4786,14 @@ class EMGVisualizer(QMainWindow):
         self._data_fps_sample_count = 0
         self._ui_fps_last_ts = time.perf_counter()
         self._data_fps_last_ts = time.perf_counter()
+        self._last_plot_range_refresh_ts = 0.0
+        self._plot_ranges_dirty = True
         self._centered_once = False
+
+        # Caches so per-frame UI updates skip redundant (expensive) style re-parses.
+        self._metrics_color_cache = {}
+        self._threshold_line_color_cache = {}
+        self._threshold_line_value_cache = None
 
         self.num_channels = 4
         self.x_axis = (np.arange(WINDOW_SIZE, dtype=np.float32) - (WINDOW_SIZE - 1)) / SAMPLE_RATE
@@ -3854,9 +4825,11 @@ class EMGVisualizer(QMainWindow):
         self.rest_capture = []
         self.flex_capture = []
 
-        # Main UI Layout
+        # Main UI Layout. Wrapped in a resizable QScrollArea so a smaller-than-
+        # ideal display (e.g. a 13" MacBook Air's 1280x800 logical desktop)
+        # scrolls instead of clipping controls.
         central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        wrap_in_scroll_area(self, central_widget)
         self.main_layout = QVBoxLayout(central_widget)
         self.main_layout.setSpacing(4)
 
@@ -4040,6 +5013,14 @@ class EMGVisualizer(QMainWindow):
         self.btn_realtime_classification.setStyleSheet(themed_button_style("accent"))
         self.btn_realtime_classification.clicked.connect(self.open_realtime_classification_window)
         buttons_layout.addWidget(self.btn_realtime_classification)
+        self.btn_gesture_game = QPushButton("Gesture Game")
+        self.btn_gesture_game.setStyleSheet(themed_button_style("accent"))
+        self.btn_gesture_game.clicked.connect(self.open_gesture_game_window)
+        buttons_layout.addWidget(self.btn_gesture_game)
+        self.btn_mouse_control = QPushButton("Mouse Control")
+        self.btn_mouse_control.setStyleSheet(themed_button_style("accent"))
+        self.btn_mouse_control.clicked.connect(self.open_mouse_control_window)
+        buttons_layout.addWidget(self.btn_mouse_control)
         info_actions_layout.addLayout(buttons_layout, 0)
         self.main_layout.addLayout(info_actions_layout)
         self.main_layout.addSpacing(8)
@@ -4458,8 +5439,9 @@ class EMGVisualizer(QMainWindow):
 
     def reset_runtime_state_for_channels(self, num_channels):
         self.num_channels = int(max(1, num_channels))
-        self.raw_data_buffer = np.zeros((self.num_channels, WINDOW_SIZE), dtype=np.float32)
-        self.data_buffer = np.zeros((self.num_channels, WINDOW_SIZE), dtype=np.float32)
+        with self._buffer_lock:
+            self.raw_data_buffer = np.zeros((self.num_channels, WINDOW_SIZE), dtype=np.float32)
+            self.data_buffer = np.zeros((self.num_channels, WINDOW_SIZE), dtype=np.float32)
         self.baseline_offsets = np.zeros(self.num_channels, dtype=np.float32)
         self.latest_mav = np.zeros(self.num_channels, dtype=np.float32)
         self.latest_rms = np.zeros(self.num_channels, dtype=np.float32)
@@ -4505,6 +5487,10 @@ class EMGVisualizer(QMainWindow):
         self.calibration_active = False
         self.rf_valid_sample_count = 0
         self.rf_samples_since_submit = 0
+        self._analysis_pending = False
+        self._last_analysis_submit_ts = 0.0
+        self._plot_ranges_dirty = True
+        self._last_plot_range_refresh_ts = 0.0
 
         self.setup_plots(self.num_channels)
         self.setup_metrics_labels(self.num_channels)
@@ -4578,6 +5564,10 @@ class EMGVisualizer(QMainWindow):
         self.stop_calibration_if_running()
         self.reset_fps_counters()
         self.live_analysis_enabled = False
+        self._analysis_pending = False
+        self._last_analysis_submit_ts = 0.0
+        self._plot_ranges_dirty = True
+        self._last_plot_range_refresh_ts = 0.0
         self.rf_samples_since_submit = 0
         self.rf_last_latency_ms = 0.0
         self.rf_prediction_rate_hz = 0.0
@@ -4591,6 +5581,11 @@ class EMGVisualizer(QMainWindow):
                 pass
 
         if self.serial_worker:
+            try:
+                self.serial_worker.batch_received.disconnect()
+                self.serial_worker.error_occurred.disconnect()
+            except Exception:
+                pass
             self.serial_worker.stop()
             self.serial_worker = None
 
@@ -4669,6 +5664,9 @@ class EMGVisualizer(QMainWindow):
         self.threshold_lines_pos = []
         self.threshold_lines_neg = []
         self.zero_lines = []
+        self._metrics_color_cache = {}
+        self._threshold_line_color_cache = {}
+        self._threshold_line_value_cache = None
 
         colors = [
             "#3B9797",
@@ -4709,6 +5707,13 @@ class EMGVisualizer(QMainWindow):
             plot_item.setMouseEnabled(x=False, y=False)
             plot_item.hideButtons()
             plot_item.setMenuEnabled(False)
+            # Draw far fewer segments: peak-preserving downsampling keeps EMG spikes
+            # visible while cutting vertices, and clip-to-view skips off-screen points.
+            try:
+                plot_item.setDownsampling(mode="peak", auto=True)
+                plot_item.setClipToView(True)
+            except Exception:
+                pass
             plot_item.disableAutoRange(axis="x")
             plot_item.setLimits(xMin=x_min, xMax=x_max, minXRange=x_span, maxXRange=x_span)
             plot_item.setXRange(x_min, x_max, padding=0)
@@ -4795,11 +5800,15 @@ class EMGVisualizer(QMainWindow):
             self.threshold_lines_pos.extend([None, None, None])
             self.threshold_lines_neg.extend([None, None, None])
             self.zero_lines.extend([zero_line, zero_line, zero_line])
+            self._plot_ranges_dirty = True
+            self._last_plot_range_refresh_ts = 0.0
             QTimer.singleShot(0, self.apply_plot_row_layout)
             return
 
         for i in range(num_channels):
             add_emg_plot(i, i, show_bottom=(i == num_channels - 1))
+        self._plot_ranges_dirty = True
+        self._last_plot_range_refresh_ts = 0.0
         QTimer.singleShot(0, self.apply_plot_row_layout)
 
     def apply_plot_row_layout(self):
@@ -4943,17 +5952,21 @@ class EMGVisualizer(QMainWindow):
             ]]
         )
 
-    def refresh_live_plot_ranges(self):
+    def refresh_live_plot_ranges(self, plot_values_by_channel=None):
         if not self.plot_rows:
             return
 
+        plot_values_by_channel = plot_values_by_channel or {}
         for row in self.plot_rows:
             if row["kind"] == "single":
                 if not self.check_autoscale.isChecked() or self.data_buffer is None:
                     self._set_fixed_plot_y_range(row["plot"], is_imu=False)
                     continue
 
-                values = self._emg_display_values(int(row["channel"]))
+                ch = int(row["channel"])
+                values = plot_values_by_channel.get(ch)
+                if values is None:
+                    values = self._emg_display_values(ch)
                 if values is not None:
                     self._apply_live_emg_y_range(row["plot"], values)
                 continue
@@ -4967,7 +5980,9 @@ class EMGVisualizer(QMainWindow):
     def toggle_autoscale(self):
         if not self.plot_rows:
             return
+        self._plot_ranges_dirty = True
         self.refresh_live_plot_ranges()
+        self._last_plot_range_refresh_ts = time.perf_counter()
 
     def update_threshold_overlays(self, _value=None):
         threshold = self.threshold_spin.value()
@@ -5012,6 +6027,11 @@ class EMGVisualizer(QMainWindow):
         self.stop_calibration_if_running()
         self.timer.stop()
         if self.serial_worker:
+            try:
+                self.serial_worker.batch_received.disconnect()
+                self.serial_worker.error_occurred.disconnect()
+            except Exception:
+                pass
             self.serial_worker.stop()
             self.serial_worker = None
 
@@ -5120,6 +6140,36 @@ class EMGVisualizer(QMainWindow):
     def on_realtime_classification_window_closed(self):
         self.realtime_classification_window = None
 
+    def open_gesture_game_window(self):
+        if self.gesture_game_window and self.gesture_game_window.isVisible():
+            self.gesture_game_window.raise_()
+            self.gesture_game_window.activateWindow()
+            return
+        self.gesture_game_window = GestureGameWindow(self)
+        self.gesture_game_window.closed.connect(self.on_gesture_game_window_closed)
+        center_window(self.gesture_game_window, self)
+        self.gesture_game_window.show()
+        self.gesture_game_window.raise_()
+        self.gesture_game_window.activateWindow()
+
+    def on_gesture_game_window_closed(self):
+        self.gesture_game_window = None
+
+    def open_mouse_control_window(self):
+        if self.mouse_control_window and self.mouse_control_window.isVisible():
+            self.mouse_control_window.raise_()
+            self.mouse_control_window.activateWindow()
+            return
+        self.mouse_control_window = MouseControlWindow(self)
+        self.mouse_control_window.closed.connect(self.on_mouse_control_window_closed)
+        center_window(self.mouse_control_window, self)
+        self.mouse_control_window.show()
+        self.mouse_control_window.raise_()
+        self.mouse_control_window.activateWindow()
+
+    def on_mouse_control_window_closed(self):
+        self.mouse_control_window = None
+
     @staticmethod
     def expected_rf_feature_count(num_channels):
         n_ch = int(max(1, num_channels))
@@ -5162,25 +6212,28 @@ class EMGVisualizer(QMainWindow):
         if self.task_session_active:
             self.set_rf_status_reason("Paused during data collection", "muted")
             return
-        if not self.is_connected or not self.is_calibrated or self.raw_data_buffer is None:
+        if not self.is_connected or not self.is_calibrated or self.data_buffer is None:
             self.set_rf_status_reason("Waiting calibrated stream...", "success")
             return
         model_ch = int(max(1, self.rf_model_input_channels))
-        if self.raw_data_buffer.shape[0] < model_ch:
+        if self.data_buffer.shape[0] < model_ch:
             self.set_rf_status_reason(
-                f"Incompatible channels (needs {model_ch}, stream has {self.raw_data_buffer.shape[0]})",
+                f"Incompatible channels (needs {model_ch}, stream has {self.data_buffer.shape[0]})",
                 "muted",
             )
             return
-        n_avail = int(min(self.rf_valid_sample_count, self.raw_data_buffer.shape[1]))
+        n_avail = int(min(self.rf_valid_sample_count, self.data_buffer.shape[1]))
         if n_avail < self.rf_window_samples:
             self.set_rf_status_reason(
                 f"Buffering stream ({n_avail}/{self.rf_window_samples} samples)",
                 "success",
             )
             return
-        win = np.ascontiguousarray(self.raw_data_buffer[:model_ch, -self.rf_window_samples:].T, dtype=np.float32)
+        with self._buffer_lock:
+            win = np.ascontiguousarray(self.data_buffer[:model_ch, -self.rf_window_samples:].T, dtype=np.float32)
         self.rf_last_status_reason = ""
+        self.rf_inference_in_flight = True
+        self.rf_last_submit_ts = time.perf_counter()
         self.rf_worker.submit_window(win)
 
     def schedule_realtime_prediction(self, new_samples):
@@ -5192,9 +6245,20 @@ class EMGVisualizer(QMainWindow):
         if self.rf_samples_since_submit < stride:
             return
         self.rf_samples_since_submit = self.rf_samples_since_submit % stride
+
+        # Don't stack work on the inference thread: skip while a prediction is in flight,
+        # and never submit faster than the cadence cap regardless of a tiny stride.
+        now = time.perf_counter()
+        if self.rf_inference_in_flight:
+            if (now - self.rf_last_submit_ts) < RF_INFLIGHT_TIMEOUT_S:
+                return
+            self.rf_inference_in_flight = False  # self-heal a dropped window
+        if (now - self.rf_last_submit_ts) < RF_MIN_SUBMIT_INTERVAL_S:
+            return
         self.request_realtime_prediction()
 
     def on_rf_prediction_ready(self, payload):
+        self.rf_inference_in_flight = False
         data = dict(payload or {})
         pred_label = str(data.get("pred_label", "N/A")).strip() or "N/A"
         pred_conf = float(data.get("pred_conf", 0.0))
@@ -5203,7 +6267,11 @@ class EMGVisualizer(QMainWindow):
         if conf_arr.size != len(self.rf_class_names):
             conf_arr = np.zeros(len(self.rf_class_names), dtype=np.float32)
 
-        self.rf_last_pred_label = pred_label
+        # Majority-vote smoothing keeps the displayed label stable at low cadence.
+        self.rf_label_history.append(pred_label)
+        smoothed_label = max(set(self.rf_label_history), key=self.rf_label_history.count)
+
+        self.rf_last_pred_label = smoothed_label
         self.rf_last_pred_conf = float(np.clip(pred_conf, 0.0, 1.0))
         self.rf_last_class_confidences = conf_arr
         self.rf_last_latency_ms = float(max(0.0, data.get("latency_ms", 0.0)))
@@ -5230,6 +6298,8 @@ class EMGVisualizer(QMainWindow):
 
     def on_rf_worker_error(self, message):
         # Keep UI responsive on worker errors; next valid batch can recover state.
+        self.rf_inference_in_flight = False
+        self.rf_label_history.clear()
         self.rf_last_pred_label = "N/A"
         self.rf_last_pred_conf = 0.0
         self.rf_last_class_confidences = np.zeros(len(self.rf_class_names), dtype=np.float32)
@@ -5392,7 +6462,7 @@ class EMGVisualizer(QMainWindow):
             self.rf_model = model
             self.rf_class_names = [str(x) for x in class_names]
             self.rf_window_samples = int(max(8, artifact.get("window_samples", 100)))
-            self.rf_stride_samples = int(max(1, artifact.get("stride_samples", 1)))
+            self.rf_stride_samples = int(max(1, artifact.get("stride_samples", self.rf_window_samples)))
             self.rf_model_created_at_text = str(artifact.get("created_at_text", "N/A"))
             self.rf_model_sample_rate = int(artifact.get("sample_rate", SAMPLE_RATE))
             self.rf_model_input_channels = int(max(1, input_channels))
@@ -5404,9 +6474,14 @@ class EMGVisualizer(QMainWindow):
             self.rf_prediction_rate_hz = 0.0
             self.rf_last_prediction_ts = 0.0
             self.rf_samples_since_submit = 0
+            self.rf_inference_in_flight = False
+            self.rf_last_submit_ts = 0.0
+            self.rf_label_history.clear()
             self.rf_last_status_reason = (
                 f"Loaded | Ch: {self.rf_model_input_channels} | Window: {self.rf_window_samples} samples"
             )
+            # Warm up the forest so the first real prediction isn't slowed by lazy init.
+            self._warm_up_rf_model(model, input_channels)
             if self.rf_worker is not None:
                 self.rf_worker.set_model(self.rf_model, self.rf_class_names, sample_rate=self.rf_model_sample_rate)
             self.request_realtime_prediction()
@@ -5417,6 +6492,21 @@ class EMGVisualizer(QMainWindow):
                 self.set_rf_status_reason("Prediction queued...", "success")
         except Exception:
             raise
+
+    def _warm_up_rf_model(self, model, input_channels):
+        """Run one throwaway prediction so first live inference isn't slowed by lazy init."""
+        if model is None or not HAS_RF_FEATURES or rf_extract_window_features is None:
+            return
+        try:
+            n_ch = int(max(1, input_channels))
+            win = np.zeros((int(max(8, self.rf_window_samples)), n_ch), dtype=np.float32)
+            feats = rf_extract_window_features(win, sample_rate=self.rf_model_sample_rate).reshape(1, -1)
+            if hasattr(model, "predict_proba"):
+                model.predict_proba(feats)
+            else:
+                model.predict(feats)
+        except Exception:
+            pass
 
     def data_collection_settings_payload(self):
         return {
@@ -5429,6 +6519,8 @@ class EMGVisualizer(QMainWindow):
             "hold_s": float(self.task_hold_s),
             "rest_s": float(self.task_rest_s),
             "record_rest": bool(self.task_record_rest),
+            "settle_s": float(self.task_settle_s),
+            "randomize_order": bool(self.task_randomize_order),
             "csv_dir": self.record_save_dir,
         }
 
@@ -5450,6 +6542,8 @@ class EMGVisualizer(QMainWindow):
         self.task_hold_s = float(max(0.2, settings.get("hold_s", self.task_hold_s)))
         self.task_rest_s = float(max(0.2, settings.get("rest_s", self.task_rest_s)))
         self.task_record_rest = bool(settings.get("record_rest", self.task_record_rest))
+        self.task_settle_s = float(max(0.0, settings.get("settle_s", self.task_settle_s)))
+        self.task_randomize_order = bool(settings.get("randomize_order", self.task_randomize_order))
         csv_dir = str(settings.get("csv_dir", self.record_save_dir)).strip()
         if csv_dir:
             self.record_save_dir = csv_dir
@@ -5628,6 +6722,8 @@ class EMGVisualizer(QMainWindow):
             f"hold_s={float(self.task_hold_s)}",
             f"rest_s={float(self.task_rest_s)}",
             f"record_rest={bool(self.task_record_rest)}",
+            f"settle_s={float(self.task_settle_s)}",
+            f"randomize_order={bool(self.task_randomize_order)}",
             f"channel_count={int(self.num_channels)}",
             f"connection_medium={self.connection_medium}",
             f"sample_rate_hz={int(SAMPLE_RATE)}",
@@ -5784,6 +6880,7 @@ class EMGVisualizer(QMainWindow):
             return
 
         self.recorded_batches = []
+        self._recorded_total_samples = 0
         self.record_start_unix = time.time()
         self.timed_record_enabled = False
         self.timed_record_label = ""
@@ -5797,6 +6894,8 @@ class EMGVisualizer(QMainWindow):
             hold_s=self.task_hold_s,
             rest_s=self.task_rest_s,
             record_rest=self.task_record_rest,
+            settle_s=self.task_settle_s,
+            randomize_order=self.task_randomize_order,
         )
         if not started:
             QMessageBox.warning(self, "Task Timer", "Unable to start task session.")
@@ -5894,9 +6993,16 @@ class EMGVisualizer(QMainWindow):
                 packet_numbers=packet_arr,
                 trial_id=int(self.timed_record_trial_id),
                 label=str(self.timed_record_label),
-                data=np.ascontiguousarray(arr.copy(), dtype=np.float32),
+                data=np.ascontiguousarray(arr, dtype=np.float32),
             )
         )
+        self._recorded_total_samples += n
+
+        # Cap in-memory recording at ~10 min @ 500 Hz × 11 ch to prevent runaway growth.
+        _MAX_RECORD_SAMPLES = 3_300_000
+        while self._recorded_total_samples > _MAX_RECORD_SAMPLES and len(self.recorded_batches) > 1:
+            oldest = self.recorded_batches.pop(0)
+            self._recorded_total_samples -= int(oldest.data.shape[0])
 
     def save_recorded_csv_dialog(self):
         if self.recorded_sample_count() <= 0:
@@ -6033,8 +7139,8 @@ class EMGVisualizer(QMainWindow):
             "run_name": "rf_training",
             "window_ms": int(max(20, self.analysis_ms_spin.value())),
             "stride_ms": 50,
-            "n_estimators": 400,
-            "max_depth": 0,
+            "n_estimators": RF_DEFAULT_N_ESTIMATORS,
+            "max_depth": RF_DEFAULT_MAX_DEPTH,
             "random_seed": 42,
             "test_size": 0.20,
             "class_weight_balanced": True,
@@ -6116,8 +7222,8 @@ class EMGVisualizer(QMainWindow):
         run_name = self._sanitize_filename_token(cfg.get("run_name", "rf_training"))
         window_ms = int(max(20, cfg.get("window_ms", default_window_ms)))
         stride_ms = int(max(5, cfg.get("stride_ms", 50)))
-        n_estimators = int(max(50, cfg.get("n_estimators", 400)))
-        max_depth_value = int(max(0, cfg.get("max_depth", 0)))
+        n_estimators = int(max(50, cfg.get("n_estimators", RF_DEFAULT_N_ESTIMATORS)))
+        max_depth_value = int(max(0, cfg.get("max_depth", RF_DEFAULT_MAX_DEPTH)))
         test_size = float(min(0.5, max(0.05, cfg.get("test_size", 0.2))))
         random_seed = int(max(0, cfg.get("random_seed", 42)))
         class_weight_balanced = bool(cfg.get("class_weight_balanced", True))
@@ -6170,10 +7276,12 @@ class EMGVisualizer(QMainWindow):
         stride_samples = max(1, int((stride_ms / 1000.0) * SAMPLE_RATE))
 
         emit_training_status("RF training: extracting features...")
-        X = []
+        windows_all = []
         y = []
+        groups = []  # one id per source segment, so overlapping windows never split across sets
         skipped_channel_segments = 0
         mismatched_segments = 0
+        seg_id = 0
         for label, seq in segments:
             arr = np.asarray(seq, dtype=np.float32)
             if arr.ndim != 2:
@@ -6182,11 +7290,12 @@ class EMGVisualizer(QMainWindow):
             if arr.shape[1] != target_channels:
                 mismatched_segments += 1
                 continue
-            seq_use = arr
-            windows = rf_build_windows_from_sequence(seq_use, win_samples, stride_samples)
+            windows = rf_build_windows_from_sequence(arr, win_samples, stride_samples)
             for w in windows:
-                X.append(rf_extract_window_features(w, sample_rate=SAMPLE_RATE))
+                windows_all.append(w)
                 y.append(label)
+                groups.append(seg_id)
+            seg_id += 1
 
         if mismatched_segments > 0:
             raise ValueError(
@@ -6194,15 +7303,31 @@ class EMGVisualizer(QMainWindow):
                 f"Expected {target_channels} channel(s), found {mismatched_segments} mismatched segment(s)."
             )
 
-        if len(X) < 20:
+        if len(windows_all) < 20:
             raise ValueError(
-                f"Too few windows for training ({len(X)}). "
+                f"Too few windows for training ({len(windows_all)}). "
                 f"Add more data or reduce window size. "
                 f"Using {target_channels} channel(s)."
             )
 
-        X = np.asarray(X, dtype=np.float32)
+        # Feature extraction is embarrassingly parallel across windows. Use threads: the
+        # extractor is numpy/FFT-bound (releases the GIL), and threads avoid the
+        # process-spawn hazards of running from inside this worker QThread on Windows.
+        feats_list = None
+        if HAS_JOBLIB_PARALLEL and len(windows_all) >= 256:
+            feat_jobs = int(max(1, (os.cpu_count() or 2) - 1))
+            try:
+                feats_list = Parallel(n_jobs=feat_jobs, prefer="threads")(
+                    delayed(rf_extract_window_features)(w, SAMPLE_RATE) for w in windows_all
+                )
+            except Exception:
+                feats_list = None  # fall back to sequential below
+        if feats_list is None:
+            feats_list = [rf_extract_window_features(w, sample_rate=SAMPLE_RATE) for w in windows_all]
+
+        X = np.asarray(feats_list, dtype=np.float32)
         y = np.asarray(y)
+        groups = np.asarray(groups, dtype=np.int64)
         classes = sorted(list(np.unique(y)))
         if len(classes) < 2:
             raise ValueError("Need at least 2 classes for classification.")
@@ -6214,12 +7339,8 @@ class EMGVisualizer(QMainWindow):
             raise ValueError("Each class needs at least 2 windows for stratified split.")
 
         emit_training_status("RF training: splitting train/test...")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y_idx,
-            test_size=test_size,
-            random_state=random_seed,
-            stratify=y_idx,
+        X_train, X_test, y_train, y_test = self._split_train_test(
+            X, y_idx, groups, classes, test_size, random_seed
         )
 
         emit_training_status("RF training: fitting model...")
@@ -6227,6 +7348,7 @@ class EMGVisualizer(QMainWindow):
         model = RandomForestClassifier(
             n_estimators=n_estimators,
             max_depth=None if max_depth_value <= 0 else max_depth_value,
+            min_samples_leaf=RF_DEFAULT_MIN_SAMPLES_LEAF,
             random_state=random_seed,
             class_weight="balanced" if class_weight_balanced else None,
             n_jobs=rf_jobs,
@@ -6474,6 +7596,31 @@ class EMGVisualizer(QMainWindow):
         except Exception:
             return 0
 
+    def _split_train_test(self, X, y_idx, groups, classes, test_size, random_seed):
+        """Group-aware split: overlapping windows from one recording never straddle the
+        train/test boundary (removes leakage that inflates accuracy). Falls back to a
+        stratified split when grouping can't keep every class on both sides."""
+        n_groups = int(np.unique(groups).size)
+        if GroupShuffleSplit is not None and n_groups >= 2:
+            try:
+                gss = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_seed)
+                train_idx, test_idx = next(gss.split(X, y_idx, groups=groups))
+                y_train = y_idx[train_idx]
+                y_test = y_idx[test_idx]
+                # Only accept the grouped split if both sides see every class.
+                n_classes = len(classes)
+                if (len(train_idx) > 0 and len(test_idx) > 0
+                        and np.unique(y_train).size == n_classes
+                        and np.unique(y_test).size == n_classes):
+                    return X[train_idx], X[test_idx], y_train, y_test
+            except Exception:
+                pass
+        # Fallback: stratified split (may leak across overlapping windows, but keeps
+        # training usable on small single-recording datasets).
+        return train_test_split(
+            X, y_idx, test_size=test_size, random_state=random_seed, stratify=y_idx,
+        )
+
     @classmethod
     def build_aligned_classification_report(cls, report_dict, classes):
         data = dict(report_dict or {})
@@ -6597,100 +7744,6 @@ class EMGVisualizer(QMainWindow):
             "support": int(round(total)),
         }
         return cls.build_aligned_classification_report(report_dict, labels)
-
-    def predict_with_rf_model(self):
-        if self.rf_model is None or not HAS_RF_FEATURES:
-            self.rf_last_class_confidences = np.zeros(len(self.rf_class_names), dtype=np.float32)
-            self.rf_last_latency_ms = 0.0
-            self.rf_prediction_rate_hz = 0.0
-            self.rf_last_prediction_ts = 0.0
-            return None, 0.0
-
-        if self.raw_data_buffer is None:
-            self.rf_last_class_confidences = np.zeros(len(self.rf_class_names), dtype=np.float32)
-            self.rf_last_latency_ms = 0.0
-            self.rf_prediction_rate_hz = 0.0
-            self.rf_last_prediction_ts = 0.0
-            return None, 0.0
-
-        model_ch = int(max(1, self.rf_model_input_channels))
-        if self.raw_data_buffer.shape[0] < model_ch:
-            self.rf_last_class_confidences = np.zeros(len(self.rf_class_names), dtype=np.float32)
-            self.rf_last_latency_ms = 0.0
-            self.rf_prediction_rate_hz = 0.0
-            self.rf_last_prediction_ts = 0.0
-            return None, 0.0
-
-        n_avail = self.raw_data_buffer.shape[1]
-        if n_avail < self.rf_window_samples:
-            self.rf_last_class_confidences = np.zeros(len(self.rf_class_names), dtype=np.float32)
-            self.rf_last_latency_ms = 0.0
-            self.rf_prediction_rate_hz = 0.0
-            self.rf_last_prediction_ts = 0.0
-            return None, 0.0
-
-        try:
-            t0 = time.perf_counter()
-            win = self.raw_data_buffer[:model_ch, -self.rf_window_samples:].T  # (samples, channels)
-            feats = rf_extract_window_features(win, sample_rate=SAMPLE_RATE).reshape(1, -1)
-
-            pred_raw = self.rf_model.predict(feats)[0]
-            pred_idx = -1
-            if isinstance(pred_raw, (np.integer, int)) and len(self.rf_class_names) > int(pred_raw):
-                pred_label = str(self.rf_class_names[int(pred_raw)])
-                pred_idx = int(pred_raw)
-            else:
-                pred_label = str(pred_raw)
-                if pred_label in self.rf_class_names:
-                    pred_idx = self.rf_class_names.index(pred_label)
-
-            confidences = np.zeros(len(self.rf_class_names), dtype=np.float32)
-
-            conf = 0.0
-            if hasattr(self.rf_model, "predict_proba"):
-                try:
-                    proba = self.rf_model.predict_proba(feats)[0]
-                    model_classes = list(getattr(self.rf_model, "classes_", []))
-                    if len(model_classes) == len(proba) and len(self.rf_class_names) > 0:
-                        for i, cls_id in enumerate(model_classes):
-                            try:
-                                idx = int(cls_id)
-                            except Exception:
-                                idx = -1
-                            if 0 <= idx < len(confidences):
-                                confidences[idx] = float(proba[i])
-                    elif len(proba) == len(confidences):
-                        confidences = np.asarray(proba, dtype=np.float32)
-                    conf = float(np.max(confidences)) if len(confidences) > 0 else float(np.max(proba))
-                except Exception:
-                    conf = 0.0
-
-            if np.max(confidences) <= 0 and 0 <= pred_idx < len(confidences):
-                confidences[pred_idx] = 1.0
-                if conf <= 0.0:
-                    conf = 1.0
-
-            t1 = time.perf_counter()
-            self.rf_last_latency_ms = max(0.0, (t1 - t0) * 1000.0)
-            if self.rf_last_prediction_ts > 0.0:
-                dt = max(1e-6, t1 - self.rf_last_prediction_ts)
-                inst_rate = 1.0 / dt
-                if self.rf_prediction_rate_hz > 0.0:
-                    self.rf_prediction_rate_hz = (0.70 * self.rf_prediction_rate_hz) + (0.30 * inst_rate)
-                else:
-                    self.rf_prediction_rate_hz = inst_rate
-            else:
-                self.rf_prediction_rate_hz = 0.0
-            self.rf_last_prediction_ts = t1
-
-            self.rf_last_class_confidences = confidences
-            return pred_label, conf
-        except Exception:
-            self.rf_last_class_confidences = np.zeros(len(self.rf_class_names), dtype=np.float32)
-            self.rf_last_latency_ms = 0.0
-            self.rf_prediction_rate_hz = 0.0
-            self.rf_last_prediction_ts = 0.0
-            return None, 0.0
 
     def on_calibration_dialog_closed(self, _result=None):
         # If user closes while calibration is active, cancel the sequence.
@@ -6839,6 +7892,10 @@ class EMGVisualizer(QMainWindow):
         self.live_analysis_enabled = False
         self.set_analysis_idle_labels()
         self.reset_fps_counters()
+        self._analysis_pending = False
+        self._last_analysis_submit_ts = 0.0
+        self._plot_ranges_dirty = True
+        self._last_plot_range_refresh_ts = 0.0
         self.timer.start(PLOT_REFRESH_MS)
         self.set_status("Calibrated - live graph/analysis running", "#00c853")
         if self.rf_model is not None:
@@ -6869,23 +7926,23 @@ class EMGVisualizer(QMainWindow):
             self.btn_analysis.setEnabled(False)
         self.btn_calibrate.setEnabled(True)
 
-    def apply_python_baseline(self, raw_batch):
-        # raw_batch shape: (samples, channels), baseline offsets shape: (channels,)
-        adjusted = np.asarray(raw_batch, dtype=np.float32).copy()
-        emg_count = int(min(self.active_emg_channel_count(), adjusted.shape[1]))
+    def apply_python_baseline(self, raw_batch_T):
+        # raw_batch_T shape: (channels, samples), baseline offsets shape: (channels,)
+        adjusted = np.ascontiguousarray(raw_batch_T, dtype=np.float32)
+        emg_count = int(min(self.active_emg_channel_count(), adjusted.shape[0]))
         if emg_count <= 0:
             return adjusted
 
-        centered = adjusted[:, :emg_count] - self.baseline_offsets[np.newaxis, :emg_count]
+        centered = adjusted[:emg_count, :] - self.baseline_offsets[:emg_count, np.newaxis]
 
         # Slow adaptive baseline correction near rest for EMG channels only.
         for ch in range(emg_count):
-            near_rest = np.abs(centered[:, ch]) < BASE_ADAPT_GUARD
+            near_rest = np.abs(centered[ch, :]) < BASE_ADAPT_GUARD
             if np.any(near_rest):
-                mean_err = float(np.mean(centered[near_rest, ch]))
+                mean_err = float(np.mean(centered[ch, near_rest]))
                 self.baseline_offsets[ch] += BASE_ADAPT_ALPHA * mean_err
 
-        adjusted[:, :emg_count] = adjusted[:, :emg_count] - self.baseline_offsets[np.newaxis, :emg_count]
+        adjusted[:emg_count, :] = adjusted[:emg_count, :] - self.baseline_offsets[:emg_count, np.newaxis]
         return adjusted
 
     @staticmethod
@@ -6893,19 +7950,28 @@ class EMGVisualizer(QMainWindow):
         if isinstance(payload, dict):
             batch = np.asarray(payload.get("batch", []), dtype=np.float32)
             packet_numbers = np.asarray(payload.get("packet_numbers", []), dtype=np.int64).reshape(-1)
-            return batch, packet_numbers
+            metadata = {key: payload.get(key) for key in (
+                "source", "frame_ids", "emg_timestamps", "imu_ids", "imu_timestamps",
+                "host_received_monotonic", "packet_gap")}
+            return batch, packet_numbers, metadata
 
         batch = np.asarray(payload, dtype=np.float32)
-        return batch, np.zeros((0,), dtype=np.int64)
+        return batch, np.zeros((0,), dtype=np.int64), {}
 
     def on_serial_batch(self, payload):
         if self.data_buffer is None or self.raw_data_buffer is None:
             return
-        batch, packet_numbers = self._normalize_stream_payload(payload)
+        batch, packet_numbers, transport_metadata = self._normalize_stream_payload(payload)
         if batch is None or batch.size == 0:
             return
         if batch.ndim != 2 or batch.shape[1] != self.num_channels:
             return
+        self.last_transport_metadata = transport_metadata
+        # Packet gaps are not silently treated as continuous EMG. Require a
+        # fresh full model window before classification resumes.
+        if int(transport_metadata.get("packet_gap") or 0) > 0:
+            self.rf_valid_sample_count = 0
+            self.rf_samples_since_submit = 0
 
         self._tick_data_fps(batch.shape[0])
 
@@ -6926,70 +7992,70 @@ class EMGVisualizer(QMainWindow):
             return  # Hard requirement: no graph/analysis before calibration.
 
         self.append_record_batch(batch, packet_numbers=packet_numbers)
-        raw_new_data = batch.T  # (channels, samples)
+        # Single transpose: (samples, channels) → (channels, samples) used for both buffers.
+        raw_new_data = batch.T
         raw_num_new = raw_new_data.shape[1]
-        if raw_num_new >= WINDOW_SIZE:
-            self.raw_data_buffer[:, :] = raw_new_data[:, -WINDOW_SIZE:]
-        else:
-            self.raw_data_buffer[:, :-raw_num_new] = self.raw_data_buffer[:, raw_num_new:]
-            self.raw_data_buffer[:, -raw_num_new:] = raw_new_data
-        self.rf_valid_sample_count = int(min(WINDOW_SIZE, self.rf_valid_sample_count + raw_num_new))
-
-        centered_batch = self.apply_python_baseline(batch)
-        new_data = centered_batch.T  # (channels, samples)
+        new_data = self.apply_python_baseline(raw_new_data)  # (channels, samples) in/out
         num_new = new_data.shape[1]
 
-        # Overflow-safe update: if backlog is larger than window, keep newest WINDOW_SIZE.
-        if num_new >= WINDOW_SIZE:
-            self.data_buffer[:, :] = new_data[:, -WINDOW_SIZE:]
-            self.schedule_realtime_prediction(num_new)
-            return
+        with self._buffer_lock:
+            if raw_num_new >= WINDOW_SIZE:
+                self.raw_data_buffer[:, :] = raw_new_data[:, -WINDOW_SIZE:]
+            else:
+                self.raw_data_buffer[:, :-raw_num_new] = self.raw_data_buffer[:, raw_num_new:]
+                self.raw_data_buffer[:, -raw_num_new:] = raw_new_data
 
-        self.data_buffer[:, :-num_new] = self.data_buffer[:, num_new:]
-        self.data_buffer[:, -num_new:] = new_data
+            # Overflow-safe update: if backlog is larger than window, keep newest WINDOW_SIZE.
+            if num_new >= WINDOW_SIZE:
+                self.data_buffer[:, :] = new_data[:, -WINDOW_SIZE:]
+            else:
+                self.data_buffer[:, :-num_new] = self.data_buffer[:, num_new:]
+                self.data_buffer[:, -num_new:] = new_data
+
+        self.rf_valid_sample_count = int(min(WINDOW_SIZE, self.rf_valid_sample_count + raw_num_new))
         self.schedule_realtime_prediction(num_new)
 
-    def update_analysis(self):
+    def _on_analysis_finished(self):
+        self._analysis_pending = False
+
+    def _on_analysis_ready(self, result):
+        """Slot called on the main thread when LiveAnalysisWorker finishes a frame."""
+        if not (self.live_analysis_enabled and not self.task_session_active
+                and self.analysis_window and self.analysis_window.isVisible()):
+            return
         if self.data_buffer is None or not self.is_calibrated:
             return
         self.analysis_idle_labels_active = False
 
-        analysis_ms = self.analysis_ms_spin.value()
-        win = max(1, int((analysis_ms / 1000.0) * SAMPLE_RATE))
-        win = min(win, WINDOW_SIZE)
-        segment = self.data_buffer[:, -win:]
+        time_metrics = result["time_metrics"]
+        spectral = result["spectral"]
+        timefreq = result["timefreq"]
+        params = result["params"]
 
-        centered_segment = segment - np.mean(segment, axis=1, keepdims=True)
-        time_metrics = self.compute_time_domain_features(centered_segment)
         self.latest_mav = time_metrics["mav"]
         self.latest_rms = time_metrics["rms"]
-
-        spectral = self.compute_spectral_features(centered_segment)
         self.latest_dom_hz = spectral["peak_hz"]
         self.latest_mean_hz = spectral["mean_hz"]
         self.latest_median_hz = spectral["median_hz"]
         self.latest_spec_entropy = spectral["spec_entropy"]
         self.latest_band_power_pct = spectral["band_power_pct"]
         self.latest_mains_noise_score = spectral["mains_noise_score"]
-
-        timefreq = self.compute_time_frequency_features(centered_segment)
         self.latest_stft_dom_mean_hz = timefreq["stft_dom_mean_hz"]
         self.latest_stft_dom_std_hz = timefreq["stft_dom_std_hz"]
         self.latest_short_time_band_delta = timefreq["short_time_band_delta"]
         self.latest_wavelet_energy_pct = timefreq["wavelet_energy_pct"]
         self.wavelet_available = timefreq["wavelet_available"]
+        self.latest_corr_matrix = result["corr_matrix"]
+        self.latest_lag_ms_matrix = result["lag_ms_matrix"]
+        self.latest_coherence_matrix = result["coherence_matrix"]
+        coord = result["coord_summary"]
+        self.latest_channel_ratio = coord["channel_ratio"]
+        self.latest_symmetry_index = coord["symmetry_index"]
+        self.latest_co_contraction_index = coord["co_contraction_index"]
 
-        self.latest_corr_matrix = self.compute_corr_matrix(centered_segment)
-        self.latest_lag_ms_matrix = self.compute_lag_ms_matrix(centered_segment)
-        self.latest_coherence_matrix = self.compute_coherence_matrix(centered_segment)
-        coord_summary = self.compute_coordination_indices(centered_segment, self.latest_rms)
-        self.latest_channel_ratio = coord_summary["channel_ratio"]
-        self.latest_symmetry_index = coord_summary["symmetry_index"]
-        self.latest_co_contraction_index = coord_summary["co_contraction_index"]
-
-        amp_threshold = self.threshold_spin.value()
-        hz_threshold = self.hz_threshold_spin.value()
-        use_hz_gate = self.check_use_hz_gate.isChecked()
+        amp_threshold = float(params.get("amp_threshold", self.threshold_spin.value()))
+        hz_threshold = float(params.get("hz_threshold", self.hz_threshold_spin.value()))
+        use_hz_gate = bool(params.get("use_hz_gate", self.check_use_hz_gate.isChecked()))
 
         amp_active = self.latest_rms >= amp_threshold
         self.latest_hz_active = self.latest_dom_hz >= hz_threshold
@@ -7003,16 +8069,10 @@ class EMGVisualizer(QMainWindow):
             [np.mean(h) if len(h) > 0 else 0.0 for h in self.burst_history_ms], dtype=np.float32
         )
         self.latest_quality_score = self.compute_contraction_quality_score(
-            self.latest_rms,
-            self.last_clip_ratio,
-            self.latest_mains_noise_score,
-            amp_threshold,
+            self.latest_rms, self.last_clip_ratio, self.latest_mains_noise_score, amp_threshold,
         )
         self.contact_quality = self.compute_contact_quality(
-            self.latest_rms,
-            self.rest_rms_ref,
-            self.last_clip_ratio,
-            self.latest_mains_noise_score,
+            self.latest_rms, self.rest_rms_ref, self.last_clip_ratio, self.latest_mains_noise_score,
         )
         snr_db = self.compute_snr_db(self.latest_rms, self.rest_rms_ref)
         baseline_drift = self.baseline_offsets - self.baseline_reference
@@ -7037,11 +8097,12 @@ class EMGVisualizer(QMainWindow):
             self.lbl_rf.setStyleSheet(themed_label_style("muted"))
 
         self.anomaly_label = self.detect_anomaly_label(
-            self.last_clip_ratio,
-            self.latest_mains_noise_score,
-            baseline_drift,
-            self.contact_quality,
+            self.last_clip_ratio, self.latest_mains_noise_score, baseline_drift, self.contact_quality,
         )
+
+        with self._buffer_lock:
+            imu_last = {i: float(self.data_buffer[i, -1]) for i in range(self.num_channels)
+                        if self.is_wireless_imu_channel(i)}
 
         for i in range(self.num_channels):
             active = bool(self.latest_active[i])
@@ -7051,23 +8112,28 @@ class EMGVisualizer(QMainWindow):
             if self.is_wireless_imu_channel(i):
                 self.metrics_labels[i].setText(
                     f"{self.channel_display_name(i)} | Angle\n"
-                    f"Value: {self.data_buffer[i, -1]:.2f} deg"
+                    f"Value: {imu_last.get(i, 0.0):.2f} deg"
                 )
             else:
                 self.metrics_labels[i].setText(
                     f"{self.channel_display_name(i)} | {state} | Hz: {hz_flag}\n"
                     f"MAV: {self.latest_mav[i]:.2f} - RMS: {self.latest_rms[i]:.2f} - FREQ: {self.latest_dom_hz[i]:.2f}Hz"
                 )
-            self.metrics_labels[i].setStyleSheet(
-                f"color: {color}; font-family: Consolas; font-size: 15px; font-weight: bold;"
-            )
-
+            if self._metrics_color_cache.get(i) != color:
+                self.metrics_labels[i].setStyleSheet(
+                    f"color: {color}; font-family: Consolas; font-size: 15px; font-weight: bold;"
+                )
+                self._metrics_color_cache[i] = color
             if self.threshold_lines_pos[i] is not None and self.threshold_lines_neg[i] is not None:
                 line_color = THEME_COLORS["success"] if active else THEME_COLORS["accent"]
-                self.threshold_lines_pos[i].setValue(amp_threshold)
-                self.threshold_lines_neg[i].setValue(-amp_threshold)
-                self.threshold_lines_pos[i].setPen(pg.mkPen(line_color, width=1, style=Qt.DashLine))
-                self.threshold_lines_neg[i].setPen(pg.mkPen(line_color, width=1, style=Qt.DashLine))
+                if self._threshold_line_value_cache != amp_threshold:
+                    self.threshold_lines_pos[i].setValue(amp_threshold)
+                    self.threshold_lines_neg[i].setValue(-amp_threshold)
+                if self._threshold_line_color_cache.get(i) != line_color:
+                    self.threshold_lines_pos[i].setPen(pg.mkPen(line_color, width=1, style=Qt.DashLine))
+                    self.threshold_lines_neg[i].setPen(pg.mkPen(line_color, width=1, style=Qt.DashLine))
+                    self._threshold_line_color_cache[i] = line_color
+        self._threshold_line_value_cache = amp_threshold
 
         if self.analysis_window and self.analysis_window.isVisible():
             self.analysis_window.update_analysis_view(
@@ -7208,10 +8274,9 @@ class EMGVisualizer(QMainWindow):
                 "mains_noise_score": zeros,
             }
 
-        window = np.hanning(n_samples).astype(np.float32)
+        window, freqs = fft_window_and_freqs(n_samples, SAMPLE_RATE)
         windowed = segment * window[np.newaxis, :]
         spectrum = np.abs(np.fft.rfft(windowed, axis=1)) ** 2
-        freqs = np.fft.rfftfreq(n_samples, d=1.0 / SAMPLE_RATE)
 
         valid = (freqs >= FFT_MIN_HZ) & (freqs <= FFT_MAX_HZ)
         valid_idx = np.where(valid)[0]
@@ -7368,10 +8433,9 @@ class EMGVisualizer(QMainWindow):
         if n_samples < 8:
             return coh
 
-        window = np.hanning(n_samples).astype(np.float32)
+        window, freqs = fft_window_and_freqs(n_samples, SAMPLE_RATE)
         xw = segment * window[np.newaxis, :]
         X = np.fft.rfft(xw, axis=1)
-        freqs = np.fft.rfftfreq(n_samples, d=1.0 / SAMPLE_RATE)
         band = (freqs >= FFT_MIN_HZ) & (freqs <= FFT_MAX_HZ)
         if not np.any(band):
             return coh
@@ -7389,7 +8453,8 @@ class EMGVisualizer(QMainWindow):
                 coh[j, i] = val
         return coh
 
-    def compute_coordination_indices(self, segment, rms_vals):
+    @staticmethod
+    def compute_coordination_indices(segment, rms_vals):
         n_ch = segment.shape[0]
         mean_rms = float(np.mean(rms_vals) + 1e-9)
         channel_ratio = (rms_vals / mean_rms).astype(np.float32)
@@ -7508,22 +8573,52 @@ class EMGVisualizer(QMainWindow):
             return
 
         if self.check_graph_stream.isChecked():
-            for row in self.plot_rows:
-                if row["kind"] == "single":
-                    ch = int(row["channel"])
-                    display_values = self._emg_display_values(ch)
-                    if display_values is not None:
-                        row["curve"].setData(self.x_axis, display_values)
-                    continue
-
-                if row["kind"] == "imu_combined":
-                    channels = row["channels"]
-                    for curve, ch in zip(row["curves"], channels):
-                        curve.setData(self.x_axis, self.data_buffer[ch])
-            self.refresh_live_plot_ranges()
+            with self._buffer_lock:
+                plot_snapshots = []
+                plot_values_by_channel = {}
+                for row in self.plot_rows:
+                    if row["kind"] == "single":
+                        ch = int(row["channel"])
+                        vals = self._emg_display_values(ch)
+                        plot_snapshots.append(("single", row, vals))
+                        plot_values_by_channel[ch] = vals
+                    elif row["kind"] == "imu_combined":
+                        imu_data = {ch: self.data_buffer[ch].copy() for ch in row["channels"]}
+                        plot_snapshots.append(("imu", row, imu_data))
+            for kind, row, data in plot_snapshots:
+                if kind == "single":
+                    if data is not None:
+                        row["curve"].setData(self.x_axis, data)
+                elif kind == "imu":
+                    for curve, ch in zip(row["curves"], row["channels"]):
+                        curve.setData(self.x_axis, data[ch])
+            now = time.perf_counter()
+            range_elapsed_ms = (now - self._last_plot_range_refresh_ts) * 1000.0
+            if self._plot_ranges_dirty or range_elapsed_ms >= PLOT_RANGE_REFRESH_MS:
+                self.refresh_live_plot_ranges(plot_values_by_channel)
+                self._plot_ranges_dirty = False
+                self._last_plot_range_refresh_ts = now
 
         if (not self.task_session_active) and self.live_analysis_enabled and self.analysis_window and self.analysis_window.isVisible():
-            self.update_analysis()
+            now = time.perf_counter()
+            analysis_elapsed_ms = (now - self._last_analysis_submit_ts) * 1000.0
+            if not self._analysis_pending and analysis_elapsed_ms >= LIVE_ANALYSIS_REFRESH_MS:
+                analysis_ms = self.analysis_ms_spin.value()
+                win = max(1, min(WINDOW_SIZE, int((analysis_ms / 1000.0) * SAMPLE_RATE)))
+                with self._buffer_lock:
+                    segment = self.data_buffer[:, -win:].copy()
+                heavy_elapsed_ms = (now - self._last_heavy_analysis_submit_ts) * 1000.0
+                include_heavy = heavy_elapsed_ms >= LIVE_ANALYSIS_HEAVY_REFRESH_MS
+                if include_heavy:
+                    self._last_heavy_analysis_submit_ts = now
+                self._analysis_pending = True
+                self._last_analysis_submit_ts = now
+                self._analysis_worker.submit(segment, {
+                    "amp_threshold": self.threshold_spin.value(),
+                    "hz_threshold": self.hz_threshold_spin.value(),
+                    "use_hz_gate": self.check_use_hz_gate.isChecked(),
+                    "include_heavy": include_heavy,
+                })
         else:
             if self.is_connected and self.is_calibrated:
                 self.set_analysis_idle_labels()
@@ -7548,12 +8643,30 @@ class EMGVisualizer(QMainWindow):
             except Exception:
                 pass
             self.realtime_classification_window = None
+        if self.gesture_game_window is not None:
+            try:
+                self.gesture_game_window.close()
+            except Exception:
+                pass
+            self.gesture_game_window = None
+        if self.mouse_control_window is not None:
+            try:
+                self.mouse_control_window.close()
+            except Exception:
+                pass
+            self.mouse_control_window = None
         if self.rf_worker is not None:
             try:
                 self.rf_worker.stop()
             except Exception:
                 pass
             self.rf_worker = None
+        if self._analysis_worker is not None:
+            try:
+                self._analysis_worker.stop()
+            except Exception:
+                pass
+            self._analysis_worker = None
         self.disconnect_serial()
         event.accept()
 
@@ -7569,16 +8682,8 @@ class EMGVisualizer(QMainWindow):
 
 
 if __name__ == "__main__":
-
-    #shoishob
-    from PyQt5.QtCore import Qt
-
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
-    #shoishob
-
     if hasattr(pg, "setConfigOptions"):
-        pg.setConfigOptions(antialias=True)
+        pg.setConfigOptions(antialias=ENABLE_ANTIALIAS, useOpenGL=ENABLE_OPENGL)
 
     if sys.platform == "win32":
         try:
@@ -7587,13 +8692,8 @@ if __name__ == "__main__":
         except Exception:
             pass
 
+    configure_high_dpi()
     app = QApplication(sys.argv)
-    # shoishob 
-    app.setApplicationName("BioWave")
-    app.setOrganizationName("BioWave")
-
-    #shoishob
-
     app_icon = get_app_icon()
     if app_icon is not None and not app_icon.isNull():
         app.setWindowIcon(app_icon)

@@ -17,15 +17,18 @@ The application is built around a complete workflow:
 ## Project Layout
 
 ```text
-`01_BioWave-EMG Data Collection APP/
+BioWaveEMG/
     |-- README.md
     |-- requirements.txt
     |-- code/
-    |   |-- main.py
-    |   |-- rf_features.py
-    |   |-- train_rf_model_gui.py
-    |   |-- emg_simulator_app.py
-    |   |-- app_theme.py
+    |   |-- main.py               # Data collection, calibration, RF training, plotting
+    |   |-- mouse_controller.py    # Standalone real-time gesture -> mouse-cursor app
+    |   |-- biowave_lab_suite.py   # Experiments, ISO 9241-9 task, analysis, figures
+    |   |-- rf_features.py         # Canonical RF feature extractor (shared contract)
+    |   |-- emg_v4_core.py         # Calibration/signal-quality/decision-engine core
+    |   |-- realtime_pipeline.py   # Sample ring buffer + pipeline profiler
+    |   |-- emg_simulator_app.py   # Synthetic EMG stream for development
+    |   |-- app_theme.py           # Shared cross-platform theme + HiDPI/sizing helpers
     |   `-- images/app_icon.png
     |-- dataset/
     `-- trained_model/
@@ -34,12 +37,15 @@ The application is built around a complete workflow:
 ## Code Guide
 
 - `code/main.py` is the main BioWave desktop app. It contains connection dialogs, serial and wireless stream workers, calibration, live plotting, analysis windows, guided data collection, RF training, model loading, and real-time inference.
+- `code/mouse_controller.py` is the standalone real-time controller: connect a device, load a pretrained `.joblib` model, calibrate, and map gestures to mouse actions. It shares `rf_features.py`, `emg_v4_core.py`, and `realtime_pipeline.py` with `main.py` so training and live inference can never drift apart, and it opens `biowave_lab_suite.py`'s `AnalysisSuiteWindow` directly via its "Open Lab Suite" button.
+- `code/biowave_lab_suite.py` is the merged experiment/analysis suite (matched-controller experiments, the ISO 9241-9 tapping task, performance analysis, publication figures, and session comparison), run standalone or opened from `mouse_controller.py`.
 - `code/rf_features.py` defines the shared Random Forest feature contract used by training and live prediction. It extracts time-domain, spectral, RMS-ratio, and pairwise-correlation features from windowed EMG data.
+- `code/emg_v4_core.py` holds the GUI-independent, unit-tested safety core: calibration-quality checks, causal band-pass/notch preprocessing, live signal-quality gating, model-vs-hardware compatibility validation, and the gesture decision engine (majority vote + confidence margin + debounce + click refractory).
+- `code/realtime_pipeline.py` provides the canonical sample ring buffer and a lightweight stage profiler used by the real-time controller.
 - `code/emg_simulator_app.py` creates synthetic EMG streams for development. TCP mode is the easiest way to test the main app without hardware.
-- `code/train_rf_model_gui.py` is a smaller standalone trainer. It is useful for older 4-channel CSV workflows, but the integrated trainer in `main.py` is the current path for variable-channel datasets.
-- `code/app_theme.py` centralizes the PyQt dark theme, button styles, label styles, and Windows title-bar styling.
+- `code/app_theme.py` centralizes the PyQt dark theme, button/label styles, Windows title-bar styling, and the cross-platform HiDPI/window-sizing helpers (`configure_high_dpi`, `fit_window_to_screen`, `wrap_in_scroll_area`) that keep every window's controls visible on smaller displays (e.g. a 13" MacBook Air's 1280x800 logical desktop).
 - `esp_code_emg_imu.txt` is the current ESP32-S3 firmware source text for Wi-Fi discovery/control, USB provisioning, 8-channel EMG sampling, BNO080 IMU polling, and UDP streaming.
-- `archive/` contains older app, firmware, and recording artifacts kept for reference.
+- `backup/` contains older app, firmware, and recording artifacts kept for reference.
 
 ## Requirements
 
@@ -69,10 +75,16 @@ If `python` is not available on your Windows PATH, install Python and enable the
 
 ## Running The App
 
-From `01_BioWave-EMG Data Collection APP/`:
+From the repo root (works the same on macOS/Linux with `python3`):
 
 ```powershell
 python code/main.py
+```
+
+To go straight to real-time gesture-mouse control with an already-trained model, skipping graphing/data-collection/training UI:
+
+```powershell
+python code/mouse_controller.py
 ```
 
 Optional simulator:
