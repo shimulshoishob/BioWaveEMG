@@ -23,7 +23,7 @@ import subprocess
 import hashlib
 import hmac
 from dataclasses import dataclass
-from collections import deque
+from collections import deque, Counter
 from urllib.parse import quote
 
 import numpy as np
@@ -39,9 +39,30 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QFont
 
-# Public compatibility re-export: existing callers may still import this name
-# from Mouse_wireless_v2 while the implementation lives in performance_logger.
-from performance_logger import PerformanceLogger, PerformanceTarget
+try:
+    from performance_logger import PerformanceLogger, PerformanceTarget
+except ImportError:
+    try:
+        from biowave_lab_suite import PerformanceLogger, PerformanceTarget
+    except ImportError:
+        @dataclass(frozen=True)
+        class PerformanceTarget:
+            target_id: str
+            center_x: float
+            center_y: float
+            radius: float
+
+        class PerformanceLogger:
+            def __init__(self, *args, **kwargs):
+                pass
+            def set_target(self, *args, **kwargs):
+                pass
+            def log_movement(self, *args, **kwargs):
+                pass
+            def log_click(self, *args, **kwargs):
+                pass
+            def stop(self):
+                pass
 
 # ========================== EMBEDDED RF FEATURES ===========================
 # These are intentionally the same features used by BioWave's rf_features.py.
@@ -216,6 +237,10 @@ CAL_DURATION_MAX_S = 10
 BASE_ADAPT_ALPHA = 0.001           # Slow baseline drift compensation.
 BASE_ADAPT_GUARD = 80.0            # Only adapt baseline while signal is near rest.
 RF_LABEL_SMOOTH_WINDOW = 5         # Majority-vote smoothing window for displayed label.
+RF_LABEL_SMOOTH_MIN_AGREEMENT = 0.60  # Minimum agreement ratio for majority vote consensus.
+RF_DEBOUNCE_FRAMES_DEFAULT = 3     # Consecutive frames required to debounce discrete click actions.
+RF_DEBOUNCE_FRAMES_MOTION_DEFAULT = 2  # Faster debounce for reversible continuous-motion actions.
+RF_REST_MARGIN_DEFAULT = 15.0      # Required percentage-point margin over Rest confidence before acting.
 GESTURE_MIN_CONFIDENCE_DEFAULT = 65.0
 
 MOUSE_ACTIONS = [
@@ -257,6 +282,153 @@ class DeviceInfo:
     @property
     def summary(self):
         return f"{self.device_name} @ {self.ip} ({self.wifi_mode})"
+
+
+class PredictionDebounceFilter:
+    """
+    Temporal smoothing, confidence gating, and debounce filter for real-time EMG predictions.
+
+    - Majority Vote Smoothing: Smooths predictions over a rolling history buffer of (label, conf)
+      to suppress high-frequency classification jitter and single-window glitches.
+    - Agreement Consensus: Requires a minimum ratio of votes in the history window to agree on the candidate.
+    - Smoothed Confidence: Computes the average confidence of the winning class across the history window.
+    - Rest Margin: The model's own Rest-class confidence is tracked alongside the winner. A non-rest
+      gesture must beat Rest by a configurable margin before it is treated as confident, which is what
+      actually stops "Rest misread as a gesture" false triggers (a smoothed top-1 label alone can't tell
+      confident-and-wrong apart from confident-and-right when Rest was the runner-up).
+    - Edge-Triggered Debounce for Discrete Actions: Ensures click events (Left Click, Right Click, Double Click)
+      only fire once per gesture activation upon reaching consecutive frame threshold, preventing spam.
+    - Continuous Motion Sustained State: Allows continuous motion actions (Move Up/Down/Left/Right)
+      while the gesture remains active and confident. Motion uses its own (faster) debounce count since
+      an occasional wrong single-tick nudge is cheap to correct, unlike a stray click.
+    """
+    def __init__(self, window_size=RF_LABEL_SMOOTH_WINDOW, min_agreement=RF_LABEL_SMOOTH_MIN_AGREEMENT,
+                 consecutive_required=RF_DEBOUNCE_FRAMES_DEFAULT,
+                 consecutive_required_motion=RF_DEBOUNCE_FRAMES_MOTION_DEFAULT,
+                 rest_margin=RF_REST_MARGIN_DEFAULT):
+        self.window_size = int(max(1, window_size))
+        self.min_agreement = float(min_agreement)
+        self.consecutive_required = int(max(1, consecutive_required))
+        self.consecutive_required_motion = int(max(1, consecutive_required_motion))
+        self.rest_margin = float(max(0.0, rest_margin))
+        self.discrete_labels = set()
+        self.history = deque(maxlen=self.window_size)
+        self.rest_conf_history = deque(maxlen=self.window_size)
+        self.active_gesture = None
+        self.candidate_gesture = None
+        self.candidate_count = 0
+        self.click_latched = False
+
+    def set_window_size(self, size):
+        size = int(max(1, size))
+        if size != self.window_size:
+            self.window_size = size
+            self.history = deque(list(self.history)[-size:], maxlen=size)
+            self.rest_conf_history = deque(list(self.rest_conf_history)[-size:], maxlen=size)
+
+    def set_consecutive_required(self, count):
+        self.consecutive_required = int(max(1, count))
+
+    def set_consecutive_required_motion(self, count):
+        self.consecutive_required_motion = int(max(1, count))
+
+    def set_rest_margin(self, margin_pct):
+        self.rest_margin = float(max(0.0, margin_pct))
+
+    def set_discrete_labels(self, labels):
+        """Labels currently mapped to a click action; everything else uses the faster motion debounce."""
+        self.discrete_labels = {str(x) for x in labels}
+
+    def reset(self):
+        self.history.clear()
+        self.rest_conf_history.clear()
+        self.active_gesture = None
+        self.candidate_gesture = None
+        self.candidate_count = 0
+        self.click_latched = False
+
+    def update(self, raw_label: str, raw_conf: float, min_conf_pct: float, raw_rest_conf: float = 0.0) -> dict:
+        """
+        Process a new raw prediction frame.
+
+        Returns a dict with:
+            - smoothed_label: str
+            - smoothed_conf: float (0.0 to 100.0)
+            - is_confident: bool (meets min confidence, consensus, and Rest margin)
+            - action_allowed: bool
+            - is_discrete_trigger: bool (True only on the single-shot rising edge for clicks)
+        """
+        raw_label = str(raw_label).strip() if raw_label else "REST"
+        raw_conf_pct = float(raw_conf) * (100.0 if raw_conf <= 1.0 else 1.0)
+        raw_rest_conf_pct = float(raw_rest_conf) * (100.0 if raw_rest_conf <= 1.0 else 1.0)
+
+        self.history.append((raw_label, raw_conf_pct))
+        self.rest_conf_history.append(raw_rest_conf_pct)
+
+        # 1. Majority vote across rolling history
+        labels = [item[0] for item in self.history]
+        counts = Counter(labels)
+        winner_label, winner_count = counts.most_common(1)[0]
+
+        # 2. Agreement ratio
+        agreement_ratio = winner_count / len(self.history)
+        has_consensus = (agreement_ratio >= self.min_agreement) or (len(self.history) < 2)
+
+        # 3. Smoothed confidence (average confidence for winner within history)
+        winner_confs = [item[1] for item in self.history if item[0] == winner_label]
+        smoothed_conf = float(np.mean(winner_confs)) if winner_confs else raw_conf_pct
+        smoothed_rest_conf = float(np.mean(self.rest_conf_history)) if self.rest_conf_history else raw_rest_conf_pct
+
+        beats_rest = (smoothed_conf - smoothed_rest_conf) >= self.rest_margin
+        is_confident = (
+            smoothed_conf >= min_conf_pct and has_consensus and beats_rest
+            and (winner_label.upper() not in ("REST", "UNKNOWN", "N/A", "IGNORE"))
+        )
+
+        # 4. Debounce candidate tracking
+        if not is_confident or winner_label.upper() in ("REST", "UNKNOWN", "N/A"):
+            # Signal returned to neutral or below threshold
+            self.candidate_gesture = None
+            self.candidate_count = 0
+            self.active_gesture = None
+            self.click_latched = False  # unlatch click so next gesture can trigger
+
+            display_label = winner_label if has_consensus else raw_label
+            return {
+                "smoothed_label": display_label,
+                "smoothed_conf": smoothed_conf,
+                "is_confident": False,
+                "action_allowed": False,
+                "is_discrete_trigger": False,
+            }
+
+        # We have a confident gesture candidate
+        if winner_label == self.candidate_gesture:
+            self.candidate_count += 1
+        else:
+            self.candidate_gesture = winner_label
+            self.candidate_count = 1
+            self.click_latched = False  # Reset latch when transitioning between different gestures
+
+        required = self.consecutive_required if winner_label in self.discrete_labels else self.consecutive_required_motion
+        has_debounce_reached = (self.candidate_count >= required)
+        self.active_gesture = winner_label if has_debounce_reached else self.active_gesture
+
+        # Determine discrete trigger edge vs continuous motion
+        is_discrete_trigger = False
+        if has_debounce_reached and not self.click_latched:
+            is_discrete_trigger = True
+            self.click_latched = True
+
+        action_allowed = has_debounce_reached
+
+        return {
+            "smoothed_label": winner_label,
+            "smoothed_conf": smoothed_conf,
+            "is_confident": True,
+            "action_allowed": action_allowed,
+            "is_discrete_trigger": is_discrete_trigger,
+        }
 
 
 @dataclass
@@ -609,9 +781,16 @@ class WirelessStreamWorker(QThread):
         self.wait()
 
 
+def _rest_class_index(class_names):
+    for i, name in enumerate(class_names):
+        if str(name).strip().upper() in ("REST", "IDLE", "NEUTRAL", "NONE"):
+            return i
+    return -1
+
+
 class InferenceWorker(QThread):
     """Extracts features and runs the pretrained Random Forest prediction."""
-    prediction_ready = pyqtSignal(str, float)
+    prediction_ready = pyqtSignal(str, float, float)  # label, confidence, rest_confidence
 
     def __init__(self, sample_rate):
         super().__init__()
@@ -666,6 +845,8 @@ class InferenceWorker(QThread):
                 feats = extract_window_features(win, sample_rate=self.sample_rate).reshape(1, -1)
                 pred_label = "N/A"
                 conf = 0.0
+                rest_conf = 0.0
+                rest_idx = _rest_class_index(classes)
 
                 if hasattr(model, "predict_proba"):
                     proba = model.predict_proba(feats)[0]
@@ -685,6 +866,8 @@ class InferenceWorker(QThread):
                         pred_idx = int(np.argmax(confidences)) if np.max(confidences) > 0 else int(np.argmax(proba))
                         pred_label = classes[pred_idx] if 0 <= pred_idx < len(classes) else str(model_classes[int(np.argmax(proba))])
                         conf = float(np.max(confidences)) if np.max(confidences) > 0 else float(np.max(proba))
+                        if 0 <= rest_idx < len(confidences):
+                            rest_conf = float(confidences[rest_idx])
                     else:
                         pred_idx = int(np.argmax(proba))
                         pred_label = classes[pred_idx] if 0 <= pred_idx < len(classes) else str(pred_idx)
@@ -696,8 +879,9 @@ class InferenceWorker(QThread):
                     else:
                         pred_label = str(pred_raw)
                     conf = 1.0
+                    rest_conf = 1.0 if pred_label.strip().upper() in ("REST", "IDLE", "NEUTRAL", "NONE") else 0.0
 
-                self.prediction_ready.emit(pred_label, conf)
+                self.prediction_ready.emit(pred_label, conf, rest_conf)
             except Exception as e:
                 print(f"Inference error: {e}")
 
@@ -901,6 +1085,13 @@ class MouseControllerApp(QMainWindow):
         self.rf_last_pred_label = "N/A"
         self.rf_last_pred_conf = 0.0
         self.rf_label_history = deque(maxlen=RF_LABEL_SMOOTH_WINDOW)
+        self.debounce_filter = PredictionDebounceFilter(
+            window_size=RF_LABEL_SMOOTH_WINDOW,
+            min_agreement=RF_LABEL_SMOOTH_MIN_AGREEMENT,
+            consecutive_required=RF_DEBOUNCE_FRAMES_DEFAULT,
+            consecutive_required_motion=RF_DEBOUNCE_FRAMES_MOTION_DEFAULT,
+            rest_margin=RF_REST_MARGIN_DEFAULT,
+        )
 
         # --- mouse control state ---
         self.class_action_map = {}
@@ -1019,6 +1210,41 @@ class MouseControllerApp(QMainWindow):
         self.spin_conf.setValue(GESTURE_MIN_CONFIDENCE_DEFAULT)
         self.spin_conf.setSuffix("%")
         set_layout.addRow("Minimum Confidence:", self.spin_conf)
+
+        self.spin_rest_margin = QDoubleSpinBox()
+        self.spin_rest_margin.setRange(0.0, 50.0)
+        self.spin_rest_margin.setValue(RF_REST_MARGIN_DEFAULT)
+        self.spin_rest_margin.setSuffix(" pts")
+        self.spin_rest_margin.setToolTip(
+            "How far a gesture's confidence must beat the model's own Rest confidence "
+            "before it's allowed to act. Raise this if Rest keeps triggering moves/clicks."
+        )
+        self.spin_rest_margin.valueChanged.connect(lambda v: self.debounce_filter.set_rest_margin(v))
+        set_layout.addRow("Rest Margin:", self.spin_rest_margin)
+
+        self.spin_smooth_window = QSpinBox()
+        self.spin_smooth_window.setRange(1, 15)
+        self.spin_smooth_window.setValue(RF_LABEL_SMOOTH_WINDOW)
+        self.spin_smooth_window.setSuffix(" frames")
+        self.spin_smooth_window.valueChanged.connect(lambda v: self.debounce_filter.set_window_size(v))
+        set_layout.addRow("Smoothing Window:", self.spin_smooth_window)
+
+        self.spin_debounce_motion = QSpinBox()
+        self.spin_debounce_motion.setRange(1, 10)
+        self.spin_debounce_motion.setValue(RF_DEBOUNCE_FRAMES_MOTION_DEFAULT)
+        self.spin_debounce_motion.setSuffix(" frames")
+        self.spin_debounce_motion.setToolTip("Debounce for reversible cursor moves. Lower = snappier, less safe.")
+        self.spin_debounce_motion.valueChanged.connect(lambda v: self.debounce_filter.set_consecutive_required_motion(v))
+        set_layout.addRow("Motion Debounce:", self.spin_debounce_motion)
+
+        self.spin_debounce = QSpinBox()
+        self.spin_debounce.setRange(1, 10)
+        self.spin_debounce.setValue(RF_DEBOUNCE_FRAMES_DEFAULT)
+        self.spin_debounce.setSuffix(" frames")
+        self.spin_debounce.setToolTip("Debounce for clicks. Kept stricter than motion since clicks are consequential.")
+        self.spin_debounce.valueChanged.connect(lambda v: self.debounce_filter.set_consecutive_required(v))
+        set_layout.addRow("Click Debounce:", self.spin_debounce)
+
         self.spin_speed = QSpinBox()
         self.spin_speed.setRange(1, 150)
         self.spin_speed.setValue(30)
@@ -1308,6 +1534,8 @@ class MouseControllerApp(QMainWindow):
         self.calibration_active = False
         self.rest_capture = []
         self.flex_capture = []
+        if hasattr(self, "debounce_filter"):
+            self.debounce_filter.reset()
 
     # ------------------------------------------------------------- model
     def browse_model(self):
@@ -1376,6 +1604,8 @@ class MouseControllerApp(QMainWindow):
 
     def update_map(self, cls, action):
         self.class_action_map[cls] = action
+        discrete = {c for c, a in self.class_action_map.items() if "Click" in a}
+        self.debounce_filter.set_discrete_labels(discrete)
 
     def check_ready_state(self):
         ready = self.model_loaded and self.is_connected
@@ -1393,6 +1623,8 @@ class MouseControllerApp(QMainWindow):
     def start_calibration_sequence(self):
         if not self.is_connected or self.calibration_active:
             return
+        if hasattr(self, "debounce_filter"):
+            self.debounce_filter.reset()
         self.cal_rest_seconds = int(self.spin_rest_sec.value())
         self.cal_flex_seconds = int(self.spin_flex_sec.value())
         self.calibration_phases = [
@@ -1557,26 +1789,45 @@ class MouseControllerApp(QMainWindow):
             self.inference_worker.submit_window(win)
 
     # --------------------------------------------------------- prediction
-    def on_prediction_ready(self, label, conf):
-        conf_pct = conf * 100.0
+    def on_prediction_ready(self, label, conf, rest_conf):
         req_conf = self.spin_conf.value()
 
-        self.lbl_prediction.setText(label.upper())
-        self.lbl_conf.setText(f"Conf: {conf_pct:.1f}%")
+        # Pass through multi-stage majority vote, confidence smoothing, Rest-margin, and debounce filter
+        result = self.debounce_filter.update(
+            raw_label=label,
+            raw_conf=conf,
+            min_conf_pct=req_conf,
+            raw_rest_conf=rest_conf,
+        )
 
-        if conf_pct < req_conf or self.class_action_map.get(label) == "Ignore":
+        smoothed_label = result["smoothed_label"]
+        smoothed_conf = result["smoothed_conf"]
+        is_confident = result["is_confident"]
+        action_allowed = result["action_allowed"]
+        is_discrete_trigger = result["is_discrete_trigger"]
+
+        self.rf_last_pred_label = smoothed_label
+        self.rf_last_pred_conf = smoothed_conf / 100.0
+
+        raw_conf_pct = conf * 100.0
+        self.lbl_prediction.setText(smoothed_label.upper())
+        self.lbl_conf.setText(f"Conf: {smoothed_conf:.1f}% (raw: {raw_conf_pct:.1f}%)")
+
+        if not is_confident or self.class_action_map.get(smoothed_label) == "Ignore":
             self.lbl_prediction.setStyleSheet("color: #6F8A99;")
             return
 
         self.lbl_prediction.setStyleSheet("color: #3B9797;")
 
-        if self.mouse_control_active:
-            action = self.class_action_map.get(label, "Ignore")
-            self.execute_mouse_action(action)
+        if self.mouse_control_active and action_allowed:
+            action = self.class_action_map.get(smoothed_label, "Ignore")
+            self.execute_mouse_action(action, is_discrete_trigger=is_discrete_trigger)
 
     # --------------------------------------------------------------- mouse
     def toggle_mouse_control(self, checked):
         self.mouse_control_active = checked and HAS_PYAUTOGUI
+        if not checked and hasattr(self, "debounce_filter"):
+            self.debounce_filter.reset()
         if checked:
             self.btn_mouse_toggle.setText("STOP MOUSE CONTROL")
             self.btn_mouse_toggle.setStyleSheet("background-color: #BF092F; font-size: 16px; padding: 12px;")
@@ -1588,7 +1839,7 @@ class MouseControllerApp(QMainWindow):
         """Open a performance-logging trial when an experiment displays a target."""
         self.performance_logger.set_target(target_id, center_x, center_y, radius)
 
-    def execute_mouse_action(self, action):
+    def execute_mouse_action(self, action, is_discrete_trigger=False):
         if action == "Ignore":
             return
         speed = self.spin_speed.value()
@@ -1606,7 +1857,7 @@ class MouseControllerApp(QMainWindow):
                 cursor = pyautogui.position()
                 self.performance_logger.log_movement(cursor.x, cursor.y, action)
             elif "Click" in action:
-                if now - self.last_click_time > self.spin_cooldown.value():
+                if is_discrete_trigger and (now - self.last_click_time > self.spin_cooldown.value()):
                     if action == "Left Click":
                         pyautogui.click(button="left")
                     elif action == "Right Click":

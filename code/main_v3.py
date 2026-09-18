@@ -78,6 +78,7 @@ from app_theme import (
     themed_label_style,
     themed_status_color,
 )
+from emg_v4_core import WirelessStats
 
 try:
     import pywt  # Optional for wavelet-energy features
@@ -661,6 +662,7 @@ class WirelessStreamWorker(QThread):
         self._running = True
         self._sock = None
         self._fallback_packet_sequence = 0
+        self.stats = WirelessStats()
 
     def _parse_datagram(self, data):
         if len(data) == WIRELESS_PACKET_SIZE:
@@ -668,22 +670,30 @@ class WirelessStreamWorker(QThread):
                 WIFI_PACKET_HEADER_FORMAT, data[:WIFI_PACKET_HEADER_SIZE]
             )
             if magic != b"BWIM" or version != 1 or frame_size != WIRELESS_FRAME_SIZE:
+                self.stats.invalid_packets += 1
                 return None
             payload = data[WIFI_PACKET_HEADER_SIZE:]
             expected_payload = frame_count * frame_size
             if len(payload) != expected_payload:
+                self.stats.invalid_packets += 1
                 return None
 
-            rows = []
+            rows, frame_ids, emg_timestamps, imu_ids, imu_timestamps = [], [], [], [], []
             for offset in range(0, expected_payload, WIRELESS_FRAME_SIZE):
                 frame = payload[offset : offset + WIRELESS_FRAME_SIZE]
-                _frame_id, _frame_ts, _imu_id, _imu_ts, *frame_fields = struct.unpack(WIRELESS_FRAME_FORMAT, frame)
+                frame_id, frame_ts, imu_id, imu_ts, *frame_fields = struct.unpack(WIRELESS_FRAME_FORMAT, frame)
                 row = [float(v) for v in frame_fields[:WIRELESS_EMG_CHANNELS]]
                 row.extend([float(frame_fields[8]), float(frame_fields[9]), float(frame_fields[10])])
                 rows.append(row)
+                frame_ids.append(frame_id); emg_timestamps.append(frame_ts)
+                imu_ids.append(imu_id); imu_timestamps.append(imu_ts)
             batch = np.asarray(rows, dtype=np.float32)
             packet_numbers = np.full(batch.shape[0], int(packet_sequence), dtype=np.int64)
-            return {"batch": batch, "packet_numbers": packet_numbers, "source": "wireless"}
+            arrival = time.monotonic()
+            return {"batch": batch, "packet_numbers": packet_numbers, "source": "wireless",
+                    "frame_ids": np.asarray(frame_ids, dtype=np.int64), "emg_timestamps": np.asarray(emg_timestamps, dtype=np.int64),
+                    "imu_ids": np.asarray(imu_ids, dtype=np.int64), "imu_timestamps": np.asarray(imu_timestamps, dtype=np.int64),
+                    "host_received_monotonic": arrival, "packet_gap": self.stats.observe(packet_sequence, arrival)}
 
         if len(data) == (WIRELESS_FRAME_SIZE * WIRELESS_FRAMES_PER_PACKET):
             rows = []
@@ -4652,6 +4662,7 @@ class EMGVisualizer(QMainWindow):
         # Cadence cap + in-flight guard so inference never falls behind the stream.
         self.rf_last_submit_ts = 0.0
         self.rf_inference_in_flight = False
+        self.last_transport_metadata = {}
         # Short label history for majority-vote smoothing of the displayed prediction.
         self.rf_label_history = deque(maxlen=RF_LABEL_SMOOTH_WINDOW)
         self.rf_worker = RFRealtimeInferenceWorker(sample_rate=SAMPLE_RATE)
@@ -7866,19 +7877,28 @@ class EMGVisualizer(QMainWindow):
         if isinstance(payload, dict):
             batch = np.asarray(payload.get("batch", []), dtype=np.float32)
             packet_numbers = np.asarray(payload.get("packet_numbers", []), dtype=np.int64).reshape(-1)
-            return batch, packet_numbers
+            metadata = {key: payload.get(key) for key in (
+                "source", "frame_ids", "emg_timestamps", "imu_ids", "imu_timestamps",
+                "host_received_monotonic", "packet_gap")}
+            return batch, packet_numbers, metadata
 
         batch = np.asarray(payload, dtype=np.float32)
-        return batch, np.zeros((0,), dtype=np.int64)
+        return batch, np.zeros((0,), dtype=np.int64), {}
 
     def on_serial_batch(self, payload):
         if self.data_buffer is None or self.raw_data_buffer is None:
             return
-        batch, packet_numbers = self._normalize_stream_payload(payload)
+        batch, packet_numbers, transport_metadata = self._normalize_stream_payload(payload)
         if batch is None or batch.size == 0:
             return
         if batch.ndim != 2 or batch.shape[1] != self.num_channels:
             return
+        self.last_transport_metadata = transport_metadata
+        # Packet gaps are not silently treated as continuous EMG. Require a
+        # fresh full model window before classification resumes.
+        if int(transport_metadata.get("packet_gap") or 0) > 0:
+            self.rf_valid_sample_count = 0
+            self.rf_samples_since_submit = 0
 
         self._tick_data_fps(batch.shape[0])
 

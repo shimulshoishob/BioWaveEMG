@@ -22,6 +22,7 @@ import struct
 import subprocess
 import hashlib
 import hmac
+import logging
 from dataclasses import dataclass
 from collections import deque
 from urllib.parse import quote
@@ -49,6 +50,18 @@ from app_theme import app_stylesheet, apply_dark_title_bar, THEME_COLORS
 # publication_figures.py, experiment_manager.py, data_tools_ui.py,
 # controller_adapters.py, async_csv.py, and iso_9241_9_task.py into one tool).
 from biowave_lab_suite import PerformanceLogger, PerformanceTarget, AnalysisSuiteWindow
+from emg_v4_core import (
+    FEATURE_EXTRACTOR_VERSION, LEGACY_PREPROCESSING_VERSION, PREPROCESSING_VERSION,
+    CalibrationProfile, GestureDecisionEngine, PreprocessingConfig, RealTimePreprocessor,
+    SampleBatch, SignalQuality, WirelessStats, assess_signal_quality, compute_calibration,
+    validate_model_artifact,
+)
+from realtime_pipeline import SampleRingBuffer, StageProfiler
+from rf_features import FEATURE_EXTRACTOR_VERSION as CANONICAL_FEATURE_EXTRACTOR_VERSION
+from rf_features import extract_window_features as canonical_extract_window_features
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+LOG = logging.getLogger("biowave.mouse")
 
 # ========================== EMBEDDED RF FEATURES ===========================
 # These are intentionally the same features used by BioWave's rf_features.py.
@@ -174,6 +187,10 @@ def extract_window_features(window, sample_rate=500):
     return np.asarray(features, dtype=np.float32)
 
 
+# The embedded V2/V3 implementation remains below only as source-history
+# reference. All deployed inference now calls the single canonical function in
+# rf_features.py, so controller and trainer cannot drift feature ordering.
+extract_window_features = canonical_extract_window_features
 HAS_RF_FEATURES = True
 
 # Mouse control library.
@@ -224,6 +241,7 @@ BASE_ADAPT_ALPHA = 0.001           # Slow baseline drift compensation.
 BASE_ADAPT_GUARD = 80.0            # Only adapt baseline while signal is near rest.
 RF_LABEL_SMOOTH_WINDOW = 5         # Majority-vote smoothing window for displayed label.
 GESTURE_MIN_CONFIDENCE_DEFAULT = 65.0
+MAX_INFERENCE_PACKET_GAP = 1        # A larger UDP loss invalidates a window; never classify it.
 
 MOUSE_ACTIONS = [
     "Ignore",
@@ -534,45 +552,54 @@ class WirelessStreamWorker(QThread):
         self._running = True
         self._sock = None
         self._fallback_packet_sequence = 0
+        self.stats = WirelessStats()
 
     def _decode_frames(self, payload, count):
-        rows = []
+        rows, frame_ids, frame_ts, imu_ids, imu_ts = [], [], [], [], []
         for offset in range(0, count * WIRELESS_FRAME_SIZE, WIRELESS_FRAME_SIZE):
             frame = payload[offset: offset + WIRELESS_FRAME_SIZE]
-            _frame_id, _frame_ts, _imu_id, _imu_ts, *frame_fields = struct.unpack(WIRELESS_FRAME_FORMAT, frame)
+            frame_id, emg_ts, imu_id, imu_ts_value, *frame_fields = struct.unpack(WIRELESS_FRAME_FORMAT, frame)
             row = [float(v) for v in frame_fields[:WIRELESS_EMG_CHANNELS]]
             row.extend([float(frame_fields[8]), float(frame_fields[9]), float(frame_fields[10])])
             rows.append(row)
-        return rows
+            frame_ids.append(frame_id); frame_ts.append(emg_ts)
+            imu_ids.append(imu_id); imu_ts.append(imu_ts_value)
+        return rows, frame_ids, frame_ts, imu_ids, imu_ts
 
     def _parse_datagram(self, data):
         if len(data) == WIRELESS_PACKET_SIZE:
-            magic, version, _frame_count, frame_size, packet_sequence = struct.unpack(
+            magic, version, frame_count, frame_size, packet_sequence = struct.unpack(
                 WIFI_PACKET_HEADER_FORMAT, data[:WIFI_PACKET_HEADER_SIZE]
             )
-            if magic != b"BWIM" or version != 1 or frame_size != WIRELESS_FRAME_SIZE:
+            if magic != b"BWIM" or version != 1 or frame_size != WIRELESS_FRAME_SIZE or frame_count != WIRELESS_FRAMES_PER_PACKET:
+                self.stats.invalid_packets += 1
                 return None
             payload = data[WIFI_PACKET_HEADER_SIZE:]
-            rows = self._decode_frames(payload, WIRELESS_FRAMES_PER_PACKET)
+            rows, frame_ids, frame_ts, imu_ids, imu_ts = self._decode_frames(payload, WIRELESS_FRAMES_PER_PACKET)
             batch = np.asarray(rows, dtype=np.float32)
             packet_numbers = np.full(batch.shape[0], int(packet_sequence), dtype=np.int64)
-            return {"batch": batch, "packet_numbers": packet_numbers}
+            arrival = time.monotonic()
+            return SampleBatch(batch, packet_numbers, np.asarray(frame_ids), np.asarray(frame_ts),
+                               np.asarray(imu_ids), np.asarray(imu_ts), arrival,
+                               gap_before=self.stats.observe(packet_sequence, arrival))
 
         if len(data) == (WIRELESS_FRAME_SIZE * WIRELESS_FRAMES_PER_PACKET):
-            rows = self._decode_frames(data, WIRELESS_FRAMES_PER_PACKET)
+            rows, frame_ids, frame_ts, imu_ids, imu_ts = self._decode_frames(data, WIRELESS_FRAMES_PER_PACKET)
             batch = np.asarray(rows, dtype=np.float32)
             packet_no = int(self._fallback_packet_sequence)
             self._fallback_packet_sequence += 1
             packet_numbers = np.full(batch.shape[0], packet_no, dtype=np.int64)
-            return {"batch": batch, "packet_numbers": packet_numbers}
+            return SampleBatch(batch, packet_numbers, np.asarray(frame_ids), np.asarray(frame_ts),
+                               np.asarray(imu_ids), np.asarray(imu_ts), time.monotonic())
 
         if len(data) == WIRELESS_FRAME_SIZE:
-            rows = self._decode_frames(data, 1)
+            rows, frame_ids, frame_ts, imu_ids, imu_ts = self._decode_frames(data, 1)
             batch = np.asarray(rows, dtype=np.float32)
             packet_no = int(self._fallback_packet_sequence)
             self._fallback_packet_sequence += 1
             packet_numbers = np.full(batch.shape[0], packet_no, dtype=np.int64)
-            return {"batch": batch, "packet_numbers": packet_numbers}
+            return SampleBatch(batch, packet_numbers, np.asarray(frame_ids), np.asarray(frame_ts),
+                               np.asarray(imu_ids), np.asarray(imu_ts), time.monotonic())
 
         return None
 
@@ -592,9 +619,9 @@ class WirelessStreamWorker(QThread):
                 payload = self._parse_datagram(data)
                 if payload is None:
                     continue
-                batch = np.asarray(payload.get("batch", []), dtype=np.float32)
+                batch = np.asarray(payload.samples, dtype=np.float32)
                 if batch.size > 0:
-                    self.batch_received.emit(batch)
+                    self.batch_received.emit(payload)
         except Exception as exc:
             if self._running:
                 self.error_occurred.emit(f"Wireless stream error: {exc}")
@@ -618,7 +645,9 @@ class WirelessStreamWorker(QThread):
 
 class InferenceWorker(QThread):
     """Extracts features and runs the pretrained Random Forest prediction."""
-    prediction_ready = pyqtSignal(str, float)
+    # label, confidence (None if unavailable), top-1/top-2 margin, inference ms
+    prediction_ready = pyqtSignal(str, object, object, float)
+    inference_error = pyqtSignal(str)
 
     def __init__(self, sample_rate):
         super().__init__()
@@ -670,9 +699,11 @@ class InferenceWorker(QThread):
                 continue
 
             try:
+                started = time.monotonic()
                 feats = extract_window_features(win, sample_rate=self.sample_rate).reshape(1, -1)
                 pred_label = "N/A"
-                conf = 0.0
+                conf = None
+                margin = None
 
                 if hasattr(model, "predict_proba"):
                     proba = model.predict_proba(feats)[0]
@@ -692,21 +723,28 @@ class InferenceWorker(QThread):
                         pred_idx = int(np.argmax(confidences)) if np.max(confidences) > 0 else int(np.argmax(proba))
                         pred_label = classes[pred_idx] if 0 <= pred_idx < len(classes) else str(model_classes[int(np.argmax(proba))])
                         conf = float(np.max(confidences)) if np.max(confidences) > 0 else float(np.max(proba))
+                        sorted_p = np.sort(proba)
+                        margin = float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1])
                     else:
                         pred_idx = int(np.argmax(proba))
                         pred_label = classes[pred_idx] if 0 <= pred_idx < len(classes) else str(pred_idx)
                         conf = float(proba[pred_idx])
+                        sorted_p = np.sort(proba)
+                        margin = float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1])
                 else:
                     pred_raw = model.predict(feats)[0]
                     if isinstance(pred_raw, (int, np.integer)) and 0 <= int(pred_raw) < len(classes):
                         pred_label = classes[int(pred_raw)]
                     else:
                         pred_label = str(pred_raw)
-                    conf = 1.0
+                    # A classifier without probabilities does not provide a confidence.
+                    # Safety gating consequently holds it in UNKNOWN rather than inventing 100%.
+                    conf = None
 
-                self.prediction_ready.emit(pred_label, conf)
+                self.prediction_ready.emit(pred_label, conf, margin, (time.monotonic() - started) * 1000.0)
             except Exception as e:
-                print(f"Inference error: {e}")
+                LOG.exception("Inference error")
+                self.inference_error.emit(str(e))
 
     def stop(self):
         self._running = False
@@ -884,6 +922,10 @@ class MouseControllerApp(QMainWindow):
         self.rf_stride_samples = 25
         self.rf_model_input_channels = DEFAULT_WIRED_CHANNELS
         self.rf_model_sample_rate = SAMPLE_RATE
+        self.rf_preprocessing_version = LEGACY_PREPROCESSING_VERSION
+        self.model_compatible = False
+        self.model_compatibility_message = "No model loaded."
+        self.model_expected_feature_count = None
 
         # --- calibration state ---
         self.is_calibrated = False
@@ -905,15 +947,23 @@ class MouseControllerApp(QMainWindow):
         self.rest_capture = []
         self.flex_capture = []
         self.baseline_offsets = np.zeros(1, dtype=np.float32)
+        self.calibration_profile = None
+        self.preprocessor = None
 
         # --- streaming buffer state ---
         self.data_buffer = None            # (channels, WINDOW_SIZE), baseline-centered
+        self.sample_ring = None            # canonical ring: (samples, channels)
+        self.pipeline_profiler = StageProfiler()
         self._buffer_lock = threading.RLock()
         self.rf_valid_sample_count = 0
         self.rf_samples_since_submit = 0
         self.rf_last_pred_label = "N/A"
         self.rf_last_pred_conf = 0.0
         self.rf_label_history = deque(maxlen=RF_LABEL_SMOOTH_WINDOW)
+        self.last_signal_quality = None
+        self.last_batch_received_monotonic = 0.0
+        self.stream_invalid_until = 0.0
+        self.decision_engine = GestureDecisionEngine()
 
         # --- mouse control state ---
         self.class_action_map = {}
@@ -926,6 +976,7 @@ class MouseControllerApp(QMainWindow):
 
         self.inference_worker = InferenceWorker(SAMPLE_RATE)
         self.inference_worker.prediction_ready.connect(self.on_prediction_ready)
+        self.inference_worker.inference_error.connect(self.on_inference_error)
         self.inference_worker.start()
 
     # ---------------------------------------------------------------- theme
@@ -1063,6 +1114,12 @@ class MouseControllerApp(QMainWindow):
         self.lbl_conf = QLabel("Conf: 0.0%")
         self.lbl_conf.setAlignment(Qt.AlignCenter)
         live_layout.addWidget(self.lbl_conf)
+
+        self.lbl_diagnostics = QLabel("Signal: WAITING | Calibration: NOT VALID | Packet loss: n/a")
+        self.lbl_diagnostics.setWordWrap(True)
+        self.lbl_diagnostics.setAlignment(Qt.AlignCenter)
+        self.lbl_diagnostics.setStyleSheet("color: #A9C2CF;")
+        live_layout.addWidget(self.lbl_diagnostics)
 
         self.btn_mouse_toggle = QPushButton("ENABLE MOUSE CONTROL")
         self.btn_mouse_toggle.setStyleSheet("background-color: #2e7d32; font-size: 16px; padding: 12px;")
@@ -1210,7 +1267,7 @@ class MouseControllerApp(QMainWindow):
 
         self.serial_worker = SerialWorker(port, DEFAULT_BAUD_RATE, self.num_channels, batch_size=25)
         self.serial_worker.batch_received.connect(self.on_stream_batch)
-        self.serial_worker.error_occurred.connect(lambda e: QMessageBox.warning(self, "Serial Error", e))
+        self.serial_worker.error_occurred.connect(self.on_stream_error)
         self.serial_worker.start()
 
         self.connection_medium = "wired"
@@ -1271,7 +1328,7 @@ class MouseControllerApp(QMainWindow):
         try:
             self.serial_worker = WirelessStreamWorker(WIFI_STREAM_PORT)
             self.serial_worker.batch_received.connect(self.on_stream_batch)
-            self.serial_worker.error_occurred.connect(lambda e: QMessageBox.warning(self, "Wireless Error", e))
+            self.serial_worker.error_occurred.connect(self.on_stream_error)
             self.serial_worker.start()
 
             client_ip = get_local_ip_for_target(device.ip)
@@ -1308,6 +1365,12 @@ class MouseControllerApp(QMainWindow):
             if self.keepalive_failures >= KEEPALIVE_MAX_FAILURES:
                 self.lbl_conn_status.setText("Status: Wireless keepalive lost")
                 self.lbl_conn_status.setStyleSheet("color: #f57c00;")
+                self.disable_mouse_control("Wireless connection lost")
+
+    def on_stream_error(self, message):
+        LOG.error("Stream error: %s", message)
+        self.disable_mouse_control("Connection error")
+        QMessageBox.warning(self, "Stream Error", message)
 
     # ------------------------------------------------------------- shared
     def disconnect_stream(self):
@@ -1329,6 +1392,9 @@ class MouseControllerApp(QMainWindow):
 
         self.is_connected = False
         self.is_calibrated = False
+        self.preprocessor = None
+        self.calibration_profile = None
+        self.disable_mouse_control("Disconnected")
         self.current_device = None
         self.connection_medium = ""
         self.keepalive_failures = 0
@@ -1346,6 +1412,7 @@ class MouseControllerApp(QMainWindow):
     def _reset_stream_state(self):
         with self._buffer_lock:
             self.data_buffer = np.zeros((self.num_channels, WINDOW_SIZE), dtype=np.float32)
+            self.sample_ring = SampleRingBuffer(self.num_channels, WINDOW_SIZE)
         self.baseline_offsets = np.zeros(self.num_channels, dtype=np.float32)
         self.rf_valid_sample_count = 0
         self.rf_samples_since_submit = 0
@@ -1372,12 +1439,21 @@ class MouseControllerApp(QMainWindow):
             self.rf_model_sample_rate = int(artifact.get("sample_rate", SAMPLE_RATE))
             self.rf_class_names = [str(x) for x in class_names]
             self.rf_model_path = path
+            compatibility = validate_model_artifact(artifact, SAMPLE_RATE, self.emg_channel_count)
+            self.rf_preprocessing_version = compatibility.preprocessing_version
+            self.model_compatible = compatibility.compatible
+            self.model_compatibility_message = "\n".join(compatibility.errors + compatibility.warnings) or "Model compatibility verified."
+            self.model_expected_feature_count = getattr(model, "n_features_in_", None)
+            if not compatibility.compatible:
+                raise ValueError("Model is incompatible:\n" + "\n".join(compatibility.errors))
 
             self.inference_worker.load_model(model, self.rf_class_names, sample_rate=self.rf_model_sample_rate)
             self.txt_model_path.setText(path)
             self.build_mapping_ui(self.rf_class_names)
 
             self.model_loaded = True
+            if compatibility.warnings:
+                QMessageBox.warning(self, "Model Compatibility Warning", "\n".join(compatibility.warnings))
             self.check_ready_state()
         except Exception as e:
             QMessageBox.critical(self, "Load Error", f"Failed to load model:\n{e}")
@@ -1423,7 +1499,16 @@ class MouseControllerApp(QMainWindow):
         self.class_action_map[cls] = action
 
     def check_ready_state(self):
-        ready = self.model_loaded and self.is_connected
+        # Recheck when a connection changes the real acquisition channel count.
+        if self.model_loaded:
+            expected = self.model_expected_feature_count
+            if expected is not None and expected != (15 * self.emg_channel_count + self.emg_channel_count + self.emg_channel_count * (self.emg_channel_count - 1) // 2):
+                self.model_compatible = False
+                self.model_compatibility_message = "Feature count does not match connected EMG channel count."
+            elif expected is not None:
+                self.model_compatible = True
+                self.model_compatibility_message = "Model feature count matches connected EMG channels."
+        ready = self.model_loaded and self.is_connected and self.model_compatible
         self.btn_calibrate.setEnabled(ready and not self.calibration_active)
         control_ready = ready and self.is_calibrated
         self.btn_mouse_toggle.setEnabled(control_ready and HAS_PYAUTOGUI)
@@ -1432,7 +1517,7 @@ class MouseControllerApp(QMainWindow):
         if ready and not self.is_calibrated:
             self.lbl_cal_status.setText("Ready to calibrate. Click Calibrate and follow the prompts.")
         elif not ready:
-            self.lbl_cal_status.setText("Connect and load a model to calibrate.")
+            self.lbl_cal_status.setText(self.model_compatibility_message if self.model_loaded and not self.model_compatible else "Connect and load a model to calibrate.")
 
     # ---------------------------------------------------------- calibration
     def start_calibration_sequence(self):
@@ -1494,7 +1579,7 @@ class MouseControllerApp(QMainWindow):
         self.calibration_timer.stop()
         self.calibration_active = False
 
-        if len(self.rest_capture) == 0:
+        if len(self.rest_capture) == 0 or len(self.flex_capture) == 0:
             self.lbl_cal_status.setText("Calibration failed: no REST samples captured.")
             QMessageBox.warning(self, "Calibration Failed", "No REST samples were captured.")
             self.check_ready_state()
@@ -1504,20 +1589,43 @@ class MouseControllerApp(QMainWindow):
             return
 
         rest = np.vstack(self.rest_capture).astype(np.float32)  # (samples, channels)
+        flex = np.vstack(self.flex_capture).astype(np.float32)
         emg_count = int(min(self.emg_channel_count, rest.shape[1]))
+        try:
+            self.calibration_profile = compute_calibration(rest[:, :emg_count], flex[:, :emg_count])
+        except ValueError as exc:
+            self.lbl_cal_status.setText(f"Calibration failed: {exc}")
+            self.check_ready_state()
+            return
+        if not self.calibration_profile.valid:
+            report = ", ".join(f"CH{i + 1} {q}" for i, q in enumerate(self.calibration_profile.quality))
+            self.lbl_cal_status.setText("Calibration rejected: " + report)
+            QMessageBox.warning(self, "Calibration Rejected", "Unsafe channel quality:\n" + "\n".join(self.calibration_profile.reasons))
+            self.check_ready_state()
+            return
         self.baseline_offsets = np.zeros(self.num_channels, dtype=np.float32)
         if emg_count > 0:
             self.baseline_offsets[:emg_count] = np.median(rest[:, :emg_count], axis=0).astype(np.float32)
 
         with self._buffer_lock:
-            self.data_buffer[:, :] = 0
+            if self.sample_ring is not None:
+                self.sample_ring.reset()
         self.rf_valid_sample_count = 0
         self.rf_samples_since_submit = 0
+        self.decision_engine = GestureDecisionEngine(min_confidence=self.spin_conf.value() / 100.0)
+        # Existing V3 models were trained on baseline-centered ADC values.
+        # Activating V4 filtering/normalization without matching model metadata
+        # would alter feature order/scale and invalidate those models.
+        self.preprocessor = None
+        if self.rf_preprocessing_version == PREPROCESSING_VERSION:
+            cfg = PreprocessingConfig(sample_rate=SAMPLE_RATE)
+            self.preprocessor = RealTimePreprocessor(emg_count, cfg, self.calibration_profile)
         self.is_calibrated = True
 
         summary = (
             f"Calibration complete.\n"
             f"Baseline (ADC): {np.array2string(self.baseline_offsets, precision=1)}\n"
+            f"Channel quality: {', '.join(f'CH{i + 1} {q}' for i, q in enumerate(self.calibration_profile.quality))}\n"
             f"REST/FLEX duration: {self.cal_rest_seconds}s / {self.cal_flex_seconds}s"
         )
         self.lbl_cal_status.setText("Calibrated - live inference running.")
@@ -1564,9 +1672,21 @@ class MouseControllerApp(QMainWindow):
         return adjusted
 
     def on_stream_batch(self, batch):
-        batch = np.asarray(batch, dtype=np.float32)
-        if batch.ndim != 2 or batch.shape[1] != self.num_channels or self.data_buffer is None:
+        metadata = batch if isinstance(batch, SampleBatch) else None
+        batch = np.asarray(metadata.samples if metadata is not None else batch, dtype=np.float32)
+        if batch.ndim != 2 or batch.shape[1] != self.num_channels or self.sample_ring is None:
             return
+
+        self.last_batch_received_monotonic = metadata.host_received_monotonic if metadata else time.monotonic()
+        if metadata and metadata.gap_before:
+            # No synthetic EMG is inserted.  Resetting the valid count forces a
+            # fully observed window after any gap; large gaps additionally block
+            # control immediately until a clean window has accumulated.
+            self.rf_valid_sample_count = 0
+            self.rf_samples_since_submit = 0
+            if metadata.gap_before > MAX_INFERENCE_PACKET_GAP:
+                self.stream_invalid_until = time.monotonic() + (self.rf_window_samples / SAMPLE_RATE)
+            LOG.warning("UDP gap: %d packet(s); inference window invalidated", metadata.gap_before)
 
         if self.calibration_active:
             if self.current_phase_key == "rest":
@@ -1579,37 +1699,71 @@ class MouseControllerApp(QMainWindow):
             return
 
         raw_T = batch.T  # (channels, samples)
-        centered = self.apply_baseline(raw_T)
+        if self.preprocessor is not None:
+            processed_emg = self.preprocessor.process(batch[:, :self.emg_channel_count]).T
+            centered = raw_T.copy()
+            centered[:self.emg_channel_count] = processed_emg
+        else:
+            centered = self.apply_baseline(raw_T)
         num_new = centered.shape[1]
 
+        ring_started = time.perf_counter_ns()
         with self._buffer_lock:
-            if num_new >= WINDOW_SIZE:
-                self.data_buffer[:, :] = centered[:, -WINDOW_SIZE:]
-            else:
-                self.data_buffer[:, :-num_new] = self.data_buffer[:, num_new:]
-                self.data_buffer[:, -num_new:] = centered
-
-        self.rf_valid_sample_count = min(WINDOW_SIZE, self.rf_valid_sample_count + num_new)
+            # One write per sample batch; no O(WINDOW_SIZE) shift/copy.
+            self.sample_ring.append(centered.T, discontinuity=bool(metadata and metadata.gap_before))
+        self.pipeline_profiler.record_ns("buffer_append", ring_started)
+        self.rf_valid_sample_count = self.sample_ring.sample_count
         self.rf_samples_since_submit += num_new
 
         model_ch = int(max(1, self.rf_model_input_channels))
         if (self.rf_samples_since_submit >= self.rf_stride_samples
-                and self.rf_valid_sample_count >= self.rf_window_samples
-                and self.data_buffer.shape[0] >= model_ch):
+                and self.sample_ring.has_window(self.rf_window_samples)
+                and self.num_channels >= model_ch):
             self.rf_samples_since_submit = 0
             with self._buffer_lock:
-                win = np.ascontiguousarray(self.data_buffer[:model_ch, -self.rf_window_samples:].T, dtype=np.float32)
+                # A single final chronological copy is required by sklearn/FFT.
+                win = self.sample_ring.latest(self.rf_window_samples)[:, :model_ch]
+            quality_profile = self.calibration_profile
+            quality = assess_signal_quality(win, quality_profile) if quality_profile is not None else SignalQuality("SIGNAL_POOR", [], "uncalibrated")
+            self.last_signal_quality = quality
+            if quality.state != "GOOD" or time.monotonic() < self.stream_invalid_until:
+                self.disable_mouse_control("Signal quality or packet continuity failed")
+                self.update_diagnostics(quality)
+                return
+            self.update_diagnostics(quality)
             self.inference_worker.submit_window(win)
 
     # --------------------------------------------------------- prediction
-    def on_prediction_ready(self, label, conf):
-        conf_pct = conf * 100.0
-        req_conf = self.spin_conf.value()
+    def update_diagnostics(self, quality=None, inference_ms=None):
+        quality = quality or self.last_signal_quality
+        q = quality.state if quality else "WAITING"
+        channel_text = ""
+        if quality and quality.channel_states:
+            channel_text = " | " + ", ".join(f"CH{i + 1} {s}" for i, s in enumerate(quality.channel_states))
+        packet = "n/a"
+        if isinstance(self.serial_worker, WirelessStreamWorker):
+            packet = f"{self.serial_worker.stats.packet_loss_percent:.2f}% (jitter {self.serial_worker.stats.jitter_ms:.1f} ms)"
+        latency = f" | inference {inference_ms:.1f} ms" if inference_ms is not None else ""
+        calibration = "VALID" if self.is_calibrated else "NOT VALID"
+        self.lbl_diagnostics.setText(f"Signal: {q} | Calibration: {calibration} | Packet loss: {packet}{latency}{channel_text}")
+
+    def on_inference_error(self, message):
+        LOG.error("Model inference failed: %s", message)
+        self.disable_mouse_control("Model inference error")
+        self.lbl_prediction.setText("UNKNOWN")
+        self.lbl_status.setText("Status: Model error; mouse disabled")
+
+    def on_prediction_ready(self, label, conf, margin, inference_ms):
+        conf_pct = (conf * 100.0) if conf is not None else None
 
         self.lbl_prediction.setText(label.upper())
-        self.lbl_conf.setText(f"Conf: {conf_pct:.1f}%")
+        self.lbl_conf.setText(f"Conf: {conf_pct:.1f}%" if conf_pct is not None else "Conf: unavailable")
+        quality_good = self.last_signal_quality is not None and self.last_signal_quality.state == "GOOD"
+        self.decision_engine.min_confidence = self.spin_conf.value() / 100.0
+        decision = self.decision_engine.update(label, conf, margin, quality_good)
+        self.update_diagnostics(inference_ms=inference_ms)
 
-        if conf_pct < req_conf or self.class_action_map.get(label) == "Ignore":
+        if not decision.action_allowed or self.class_action_map.get(label) == "Ignore":
             self.lbl_prediction.setStyleSheet("color: #6F8A99;")
             return
 
@@ -1617,17 +1771,28 @@ class MouseControllerApp(QMainWindow):
 
         if self.mouse_control_active:
             action = self.class_action_map.get(label, "Ignore")
+            if "Click" in action and not self.decision_engine.trigger_click_once():
+                return
             self.execute_mouse_action(action)
 
     # --------------------------------------------------------------- mouse
     def toggle_mouse_control(self, checked):
-        self.mouse_control_active = checked and HAS_PYAUTOGUI
+        self.mouse_control_active = checked and HAS_PYAUTOGUI and self.is_connected and self.is_calibrated and self.model_compatible
         if checked:
             self.btn_mouse_toggle.setText("STOP MOUSE CONTROL")
             self.btn_mouse_toggle.setStyleSheet("background-color: #BF092F; font-size: 16px; padding: 12px;")
         else:
             self.btn_mouse_toggle.setText("ENABLE MOUSE CONTROL")
             self.btn_mouse_toggle.setStyleSheet("background-color: #2e7d32; font-size: 16px; padding: 12px;")
+
+    def disable_mouse_control(self, reason):
+        """Single fail-safe path used for model, link, packet, and quality failures."""
+        if self.mouse_control_active:
+            LOG.warning("Mouse control disabled: %s", reason)
+        self.mouse_control_active = False
+        if self.btn_mouse_toggle.isChecked():
+            self.btn_mouse_toggle.setChecked(False)
+        self.lbl_status.setText(f"Status: {reason}")
 
     def set_performance_target(self, target_id, center_x, center_y, radius):
         """Open a performance-logging trial when an experiment displays a target."""
